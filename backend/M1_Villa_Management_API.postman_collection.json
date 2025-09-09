@@ -1,0 +1,2567 @@
+{
+	"info": {
+		"_postman_id": "m1-villa-management-api",
+		"name": "M1 Villa Management System API",
+		"description": "Comprehensive API collection for the M1 Villa Management System featuring villa onboarding, management, document handling, photo uploads, staff management, and analytics.\n\n## Authentication\nAll endpoints require authentication via Clerk. Include the Bearer token in the Authorization header.\n\n## Environment Variables\n- `baseUrl`: API base URL (e.g., http://localhost:4001/api)\n- `authToken`: Clerk authentication token\n- `villaId`: Sample villa ID for testing\n- `ownerId`: Sample owner ID for testing\n\n## API Modules\n1. **Authentication & Users** - User management and role-based access\n2. **Villas** - Villa CRUD operations and management\n3. **Onboarding** - Multi-step villa onboarding process\n4. **Owners** - Villa owner management\n5. **Staff** - Staff member management\n6. **Documents** - Document upload and management with SharePoint integration\n7. **Photos** - Photo upload and categorization\n8. **Facilities** - Villa facility checklist management\n9. **Bank Details** - Secure bank account information\n10. **OTA Credentials** - Online Travel Agency platform management\n11. **Dashboard** - Analytics and dashboard data\n12. **SharePoint** - Document and photo sync with SharePoint",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "🔐 Authentication & Users",
+			"item": [
+				{
+					"name": "Get All Users",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/users",
+							"host": ["{{baseUrl}}"],
+							"path": ["users"]
+						},
+						"description": "Get list of all users with their roles and metadata"
+					}
+				},
+				{
+					"name": "Update User Role",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"role\": \"admin\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/users/:userId/role",
+							"host": ["{{baseUrl}}"],
+							"path": ["users", ":userId", "role"],
+							"variable": [
+								{
+									"key": "userId",
+									"value": "{{userId}}"
+								}
+							]
+						},
+						"description": "Update a user's role (owner, manager, admin, staff)"
+					}
+				},
+				{
+					"name": "Make Current User Admin",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/users/make-admin",
+							"host": ["{{baseUrl}}"],
+							"path": ["users", "make-admin"]
+						},
+						"description": "Test endpoint to make current user an admin"
+					}
+				}
+			],
+			"description": "User management and authentication endpoints"
+		},
+		{
+			"name": "🏠 Villas",
+			"item": [
+				{
+					"name": "Create Villa",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"villaName\": \"Sunset Paradise Villa\",\n  \"location\": \"Seminyak\",\n  \"address\": \"Jl. Sunset Road 123\",\n  \"city\": \"Badung\",\n  \"country\": \"Indonesia\",\n  \"zipCode\": \"80361\",\n  \"latitude\": -8.6918,\n  \"longitude\": 115.1721,\n  \"bedrooms\": 4,\n  \"bathrooms\": 5,\n  \"maxGuests\": 8,\n  \"propertySize\": 500,\n  \"plotSize\": 800,\n  \"yearBuilt\": 2020,\n  \"propertyType\": \"VILLA\",\n  \"villaStyle\": \"MODERN\",\n  \"description\": \"Beautiful modern villa with stunning sunset views\",\n  \"shortDescription\": \"Modern villa with pool and sunset views\",\n  \"tags\": [\"pool\", \"sunset\", \"modern\", \"luxury\"]\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/villas",
+							"host": ["{{baseUrl}}"],
+							"path": ["villas"]
+						},
+						"description": "Create a new villa (Admin/Manager only)"
+					}
+				},
+				{
+					"name": "Create Villa for Onboarding",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"My New Villa\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/villas/onboarding",
+							"host": ["{{baseUrl}}"],
+							"path": ["villas", "onboarding"]
+						},
+						"description": "Create a villa for onboarding process (Owner access)"
+					}
+				},
+				{
+					"name": "Get All Villas",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/villas?page=1&limit=20&status=ACTIVE",
+							"host": ["{{baseUrl}}"],
+							"path": ["villas"],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "20"
+								},
+								{
+									"key": "status",
+									"value": "ACTIVE"
+								},
+								{
+									"key": "location",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "bedrooms",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "search",
+									"value": "",
+									"disabled": true
+								}
+							]
+						},
+						"description": "Get paginated list of villas with optional filters"
+					}
+				},
+				{
+					"name": "Search Villas (Autocomplete)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/villas/search?q=villa&limit=10",
+							"host": ["{{baseUrl}}"],
+							"path": ["villas", "search"],
+							"query": [
+								{
+									"key": "q",
+									"value": "villa"
+								},
+								{
+									"key": "limit",
+									"value": "10"
+								}
+							]
+						},
+						"description": "Search villas for autocomplete functionality"
+					}
+				},
+				{
+					"name": "Get Villa by ID",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/villas/{{villaId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["villas", "{{villaId}}"]
+						},
+						"description": "Get detailed villa information by ID"
+					}
+				},
+				{
+					"name": "Get Villa Profile",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/villas/{{villaId}}/profile",
+							"host": ["{{baseUrl}}"],
+							"path": ["villas", "{{villaId}}", "profile"]
+						},
+						"description": "Get comprehensive villa profile with all related data"
+					}
+				},
+				{
+					"name": "Update Villa",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"villaName\": \"Updated Villa Name\",\n  \"description\": \"Updated description\",\n  \"maxGuests\": 10,\n  \"status\": \"ACTIVE\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/villas/{{villaId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["villas", "{{villaId}}"]
+						},
+						"description": "Update villa information (Admin/Manager only)"
+					}
+				},
+				{
+					"name": "Delete Villa",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/villas/{{villaId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["villas", "{{villaId}}"]
+						},
+						"description": "Delete/Archive villa"
+					}
+				},
+				{
+					"name": "Get Villa Statistics",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/villas/{{villaId}}/stats",
+							"host": ["{{baseUrl}}"],
+							"path": ["villas", "{{villaId}}", "stats"]
+						},
+						"description": "Get villa statistics and metrics"
+					}
+				},
+				{
+					"name": "Bulk Update Villa Status",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"villaIds\": [\"villa-1\", \"villa-2\"],\n  \"status\": \"ACTIVE\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/villas/bulk/status",
+							"host": ["{{baseUrl}}"],
+							"path": ["villas", "bulk", "status"]
+						},
+						"description": "Bulk update villa status (Admin/Manager only)"
+					}
+				},
+				{
+					"name": "Submit Villa for Review",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/villas/{{villaId}}/submit-for-review",
+							"host": ["{{baseUrl}}"],
+							"path": ["villas", "{{villaId}}", "submit-for-review"]
+						},
+						"description": "Submit villa for admin review"
+					}
+				}
+			],
+			"description": "Villa management endpoints for CRUD operations and villa-specific functionality"
+		},
+		{
+			"name": "📋 Onboarding",
+			"item": [
+				{
+					"name": "Get Onboarding Progress",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/onboarding/{{villaId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["onboarding", "{{villaId}}"]
+						},
+						"description": "Get current onboarding progress for a villa"
+					}
+				},
+				{
+					"name": "Update Onboarding Step",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							},
+							{
+								"key": "x-auto-save",
+								"value": "false",
+								"type": "text",
+								"description": "Set to 'true' for auto-save requests"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"step\": 1,\n  \"data\": {\n    \"villaName\": \"Sunset Paradise Villa\",\n    \"location\": \"Seminyak\",\n    \"address\": \"Jl. Sunset Road 123\",\n    \"city\": \"Badung\",\n    \"country\": \"Indonesia\",\n    \"bedrooms\": 4,\n    \"bathrooms\": 5,\n    \"maxGuests\": 8,\n    \"propertyType\": \"VILLA\",\n    \"villaStyle\": \"MODERN\"\n  },\n  \"completed\": true\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/onboarding/{{villaId}}/step",
+							"host": ["{{baseUrl}}"],
+							"path": ["onboarding", "{{villaId}}", "step"]
+						},
+						"description": "Update a specific onboarding step with data"
+					}
+				},
+				{
+					"name": "Validate Onboarding Step",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/onboarding/{{villaId}}/validate/1",
+							"host": ["{{baseUrl}}"],
+							"path": ["onboarding", "{{villaId}}", "validate", "1"]
+						},
+						"description": "Validate a specific onboarding step"
+					}
+				},
+				{
+					"name": "Complete Onboarding",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/onboarding/{{villaId}}/complete",
+							"host": ["{{baseUrl}}"],
+							"path": ["onboarding", "{{villaId}}", "complete"]
+						},
+						"description": "Mark onboarding as fully complete"
+					}
+				},
+				{
+					"name": "Submit for Review",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/onboarding/{{villaId}}/submit-review",
+							"host": ["{{baseUrl}}"],
+							"path": ["onboarding", "{{villaId}}", "submit-review"]
+						},
+						"description": "Submit onboarding for admin review"
+					}
+				},
+				{
+					"name": "Approve Onboarding",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"notes\": \"Approved after review. All requirements met.\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/onboarding/{{villaId}}/approve",
+							"host": ["{{baseUrl}}"],
+							"path": ["onboarding", "{{villaId}}", "approve"]
+						},
+						"description": "Approve onboarding (Admin only)"
+					}
+				},
+				{
+					"name": "Reject Onboarding",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"reason\": \"Missing required documents. Please upload property contract and insurance certificate.\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/onboarding/{{villaId}}/reject",
+							"host": ["{{baseUrl}}"],
+							"path": ["onboarding", "{{villaId}}", "reject"]
+						},
+						"description": "Reject onboarding (Admin only)"
+					}
+				},
+				{
+					"name": "Auto-save Field Progress",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"value\": \"Partially filled value\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/onboarding/{{villaId}}/field-progress/1/villaName",
+							"host": ["{{baseUrl}}"],
+							"path": ["onboarding", "{{villaId}}", "field-progress", "1", "villaName"]
+						},
+						"description": "Auto-save individual field progress"
+					}
+				}
+			],
+			"description": "Multi-step villa onboarding process with auto-save and validation"
+		},
+		{
+			"name": "👥 Owners",
+			"item": [
+				{
+					"name": "Get All Owners",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/owners",
+							"host": ["{{baseUrl}}"],
+							"path": ["owners"]
+						},
+						"description": "Get list of all villa owners"
+					}
+				},
+				{
+					"name": "Get Owner by ID",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/owners/{{ownerId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["owners", "{{ownerId}}"]
+						},
+						"description": "Get owner details by ID"
+					}
+				},
+				{
+					"name": "Get Owner by Villa ID",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/owners/villa/{{villaId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["owners", "villa", "{{villaId}}"]
+						},
+						"description": "Get owner information for a specific villa"
+					}
+				},
+				{
+					"name": "Create Owner",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"villaId\": \"{{villaId}}\",\n  \"firstName\": \"John\",\n  \"lastName\": \"Doe\",\n  \"email\": \"john.doe@example.com\",\n  \"phone\": \"+1234567890\",\n  \"alternativePhone\": \"+0987654321\",\n  \"nationality\": \"American\",\n  \"passportNumber\": \"A12345678\",\n  \"idNumber\": \"123-45-6789\",\n  \"address\": \"123 Main Street\",\n  \"city\": \"New York\",\n  \"country\": \"USA\",\n  \"zipCode\": \"10001\",\n  \"preferredLanguage\": \"en\",\n  \"communicationPreference\": \"EMAIL\",\n  \"notes\": \"VIP owner, prefers morning communications\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/owners",
+							"host": ["{{baseUrl}}"],
+							"path": ["owners"]
+						},
+						"description": "Create a new villa owner"
+					}
+				},
+				{
+					"name": "Update Owner",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"phone\": \"+1234567891\",\n  \"email\": \"john.doe.updated@example.com\",\n  \"notes\": \"Updated contact information\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/owners/{{ownerId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["owners", "{{ownerId}}"]
+						},
+						"description": "Update owner information"
+					}
+				},
+				{
+					"name": "Delete Owner",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/owners/{{ownerId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["owners", "{{ownerId}}"]
+						},
+						"description": "Delete an owner"
+					}
+				}
+			],
+			"description": "Villa owner management endpoints"
+		},
+		{
+			"name": "👷 Staff",
+			"item": [
+				{
+					"name": "Get All Staff",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/staff?page=1&limit=10&isActive=true",
+							"host": ["{{baseUrl}}"],
+							"path": ["staff"],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "10"
+								},
+								{
+									"key": "isActive",
+									"value": "true"
+								},
+								{
+									"key": "villaId",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "position",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "department",
+									"value": "",
+									"disabled": true
+								}
+							]
+						},
+						"description": "Get paginated list of staff with filters"
+					}
+				},
+				{
+					"name": "Get Staff Statistics",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/staff/stats",
+							"host": ["{{baseUrl}}"],
+							"path": ["staff", "stats"]
+						},
+						"description": "Get staff statistics by position and department"
+					}
+				},
+				{
+					"name": "Get Staff by Villa",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/staff/villa/{{villaId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["staff", "villa", "{{villaId}}"]
+						},
+						"description": "Get all staff members for a specific villa"
+					}
+				},
+				{
+					"name": "Create Staff Member",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"villaId\": \"{{villaId}}\",\n  \"firstName\": \"Maria\",\n  \"lastName\": \"Santos\",\n  \"email\": \"maria.santos@example.com\",\n  \"phone\": \"+628123456789\",\n  \"idNumber\": \"3217012345678901\",\n  \"nationality\": \"Indonesian\",\n  \"position\": \"HOUSEKEEPER\",\n  \"department\": \"HOUSEKEEPING\",\n  \"employmentType\": \"FULL_TIME\",\n  \"startDate\": \"2024-01-01T00:00:00.000Z\",\n  \"salary\": 5000000,\n  \"salaryFrequency\": \"MONTHLY\",\n  \"currency\": \"IDR\",\n  \"hasAccommodation\": true,\n  \"hasMeals\": true,\n  \"hasTransport\": false,\n  \"hasHealthInsurance\": true,\n  \"emergencyContact\": \"Budi Santos\",\n  \"emergencyPhone\": \"+628123456788\",\n  \"notes\": \"Experienced housekeeper, speaks English\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/staff",
+							"host": ["{{baseUrl}}"],
+							"path": ["staff"]
+						},
+						"description": "Create a new staff member"
+					}
+				},
+				{
+					"name": "Update Staff Member",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"salary\": 5500000,\n  \"hasTransport\": true,\n  \"notes\": \"Promoted to senior housekeeper with transport allowance\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/staff/{{staffId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["staff", "{{staffId}}"]
+						},
+						"description": "Update staff member information"
+					}
+				},
+				{
+					"name": "Activate Staff Member",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/staff/{{staffId}}/activate",
+							"host": ["{{baseUrl}}"],
+							"path": ["staff", "{{staffId}}", "activate"]
+						},
+						"description": "Activate a deactivated staff member"
+					}
+				},
+				{
+					"name": "Deactivate Staff Member",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/staff/{{staffId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["staff", "{{staffId}}"]
+						},
+						"description": "Soft delete (deactivate) staff member"
+					}
+				}
+			],
+			"description": "Staff management endpoints for villa personnel"
+		},
+		{
+			"name": "📄 Documents",
+			"item": [
+				{
+					"name": "Get All Documents",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/documents?page=1&limit=20&isActive=true",
+							"host": ["{{baseUrl}}"],
+							"path": ["documents"],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "20"
+								},
+								{
+									"key": "isActive",
+									"value": "true"
+								},
+								{
+									"key": "villaId",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "documentType",
+									"value": "",
+									"disabled": true
+								}
+							]
+						},
+						"description": "Get paginated list of documents with filters"
+					}
+				},
+				{
+					"name": "Get Documents by Villa",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/documents/villa/{{villaId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["documents", "villa", "{{villaId}}"]
+						},
+						"description": "Get all documents for a specific villa"
+					}
+				},
+				{
+					"name": "Upload Documents",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "documents",
+									"type": "file",
+									"src": []
+								},
+								{
+									"key": "villaId",
+									"value": "{{villaId}}",
+									"type": "text"
+								},
+								{
+									"key": "documentType",
+									"value": "PROPERTY_CONTRACT",
+									"type": "text"
+								},
+								{
+									"key": "description",
+									"value": "Villa property contract and legal documents",
+									"type": "text"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/documents/upload",
+							"host": ["{{baseUrl}}"],
+							"path": ["documents", "upload"]
+						},
+						"description": "Upload multiple documents for a villa"
+					}
+				},
+				{
+					"name": "Upload to SharePoint",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "documents",
+									"type": "file",
+									"src": []
+								},
+								{
+									"key": "villaId",
+									"value": "{{villaId}}",
+									"type": "text"
+								},
+								{
+									"key": "documentType",
+									"value": "OTHER",
+									"type": "text"
+								},
+								{
+									"key": "category",
+									"value": "contracts",
+									"type": "text",
+									"description": "contracts, licenses, insurance, maintenance, legal, operational, media, other"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/documents/upload-sharepoint",
+							"host": ["{{baseUrl}}"],
+							"path": ["documents", "upload-sharepoint"]
+						},
+						"description": "Upload documents directly to SharePoint with organized folder structure"
+					}
+				},
+				{
+					"name": "Download Document",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/documents/download/{{documentId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["documents", "download", "{{documentId}}"]
+						},
+						"description": "Download a document by ID"
+					}
+				},
+				{
+					"name": "Update Document",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"description\": \"Updated document description\",\n  \"documentType\": \"PROPERTY_CONTRACT\",\n  \"validUntil\": \"2025-12-31T23:59:59.999Z\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/documents/{{documentId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["documents", "{{documentId}}"]
+						},
+						"description": "Update document metadata"
+					}
+				},
+				{
+					"name": "Get Document Statistics",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/documents/stats",
+							"host": ["{{baseUrl}}"],
+							"path": ["documents", "stats"]
+						},
+						"description": "Get document statistics by type and villa"
+					}
+				},
+				{
+					"name": "Get Expiring Documents",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/documents/expiring?days=30",
+							"host": ["{{baseUrl}}"],
+							"path": ["documents", "expiring"],
+							"query": [
+								{
+									"key": "days",
+									"value": "30"
+								}
+							]
+						},
+						"description": "Get documents expiring within specified days"
+					}
+				}
+			],
+			"description": "Document management with SharePoint integration"
+		},
+		{
+			"name": "📷 Photos",
+			"item": [
+				{
+					"name": "Get All Photos",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/photos?page=1&limit=20",
+							"host": ["{{baseUrl}}"],
+							"path": ["photos"],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "20"
+								},
+								{
+									"key": "villaId",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "category",
+									"value": "",
+									"disabled": true
+								}
+							]
+						},
+						"description": "Get paginated list of photos with filters"
+					}
+				},
+				{
+					"name": "Get Photos by Villa",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/photos/villa/{{villaId}}?category=EXTERIOR_VIEWS",
+							"host": ["{{baseUrl}}"],
+							"path": ["photos", "villa", "{{villaId}}"],
+							"query": [
+								{
+									"key": "category",
+									"value": "EXTERIOR_VIEWS"
+								}
+							]
+						},
+						"description": "Get photos for a specific villa, optionally filtered by category"
+					}
+				},
+				{
+					"name": "Upload Photos",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "photos",
+									"type": "file",
+									"src": []
+								},
+								{
+									"key": "villaId",
+									"value": "{{villaId}}",
+									"type": "text"
+								},
+								{
+									"key": "category",
+									"value": "EXTERIOR_VIEWS",
+									"type": "text"
+								},
+								{
+									"key": "tags",
+									"value": "[\"pool\", \"sunset\", \"garden\"]",
+									"type": "text"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/photos/upload",
+							"host": ["{{baseUrl}}"],
+							"path": ["photos", "upload"]
+						},
+						"description": "Upload multiple photos for a villa"
+					}
+				},
+				{
+					"name": "Upload to SharePoint",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "photos",
+									"type": "file",
+									"src": []
+								},
+								{
+									"key": "villaId",
+									"value": "{{villaId}}",
+									"type": "text"
+								},
+								{
+									"key": "category",
+									"value": "exterior_views",
+									"type": "text"
+								},
+								{
+									"key": "subfolder",
+									"value": "",
+									"type": "text",
+									"description": "Optional subfolder (e.g., for bedrooms: 'Master Bedroom')"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/photos/upload-sharepoint",
+							"host": ["{{baseUrl}}"],
+							"path": ["photos", "upload-sharepoint"]
+						},
+						"description": "Upload photos directly to SharePoint with organized folder structure"
+					}
+				},
+				{
+					"name": "Update Photo",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"caption\": \"Beautiful sunset view from the villa terrace\",\n  \"altText\": \"Villa terrace overlooking ocean at sunset\",\n  \"tags\": [\"sunset\", \"terrace\", \"ocean\", \"view\"],\n  \"isMain\": true\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/photos/{{photoId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["photos", "{{photoId}}"]
+						},
+						"description": "Update photo metadata and set as main photo"
+					}
+				},
+				{
+					"name": "Set Main Photo",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/photos/{{photoId}}/set-main",
+							"host": ["{{baseUrl}}"],
+							"path": ["photos", "{{photoId}}", "set-main"]
+						},
+						"description": "Set a photo as the main photo for its villa"
+					}
+				},
+				{
+					"name": "Reorder Photos",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"photoIds\": [\"photo-1\", \"photo-3\", \"photo-2\", \"photo-4\"]\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/photos/reorder",
+							"host": ["{{baseUrl}}"],
+							"path": ["photos", "reorder"]
+						},
+						"description": "Reorder photos by providing array of photo IDs in desired order"
+					}
+				},
+				{
+					"name": "Get Photo Statistics",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/photos/stats",
+							"host": ["{{baseUrl}}"],
+							"path": ["photos", "stats"]
+						},
+						"description": "Get photo statistics by category and villa"
+					}
+				}
+			],
+			"description": "Photo management with categorization and SharePoint integration"
+		},
+		{
+			"name": "🏢 Facilities",
+			"item": [
+				{
+					"name": "Get All Facilities",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/facilities?page=1&limit=50&isAvailable=true",
+							"host": ["{{baseUrl}}"],
+							"path": ["facilities"],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "50"
+								},
+								{
+									"key": "isAvailable",
+									"value": "true"
+								},
+								{
+									"key": "villaId",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "category",
+									"value": "",
+									"disabled": true
+								}
+							]
+						},
+						"description": "Get paginated list of facilities with filters"
+					}
+				},
+				{
+					"name": "Get Facilities by Villa",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/facilities/villa/{{villaId}}?groupBy=category",
+							"host": ["{{baseUrl}}"],
+							"path": ["facilities", "villa", "{{villaId}}"],
+							"query": [
+								{
+									"key": "groupBy",
+									"value": "category"
+								},
+								{
+									"key": "category",
+									"value": "",
+									"disabled": true
+								}
+							]
+						},
+						"description": "Get facilities for a specific villa, optionally grouped by category"
+					}
+				},
+				{
+					"name": "Create Facility",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"villaId\": \"{{villaId}}\",\n  \"category\": \"KITCHEN_EQUIPMENT\",\n  \"subcategory\": \"Appliances\",\n  \"itemName\": \"Coffee Machine\",\n  \"isAvailable\": true,\n  \"quantity\": 1,\n  \"condition\": \"Excellent\",\n  \"notes\": \"Nespresso machine with milk frother\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/facilities",
+							"host": ["{{baseUrl}}"],
+							"path": ["facilities"]
+						},
+						"description": "Create a new facility item"
+					}
+				},
+				{
+					"name": "Bulk Update Facilities",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"villaId\": \"{{villaId}}\",\n  \"facilities\": [\n    {\n      \"category\": \"KITCHEN_EQUIPMENT\",\n      \"subcategory\": \"Appliances\",\n      \"itemName\": \"Refrigerator\",\n      \"isAvailable\": true,\n      \"quantity\": 1,\n      \"condition\": \"Good\"\n    },\n    {\n      \"category\": \"KITCHEN_EQUIPMENT\",\n      \"subcategory\": \"Appliances\",\n      \"itemName\": \"Microwave\",\n      \"isAvailable\": true,\n      \"quantity\": 1,\n      \"condition\": \"Excellent\"\n    },\n    {\n      \"category\": \"POOL_AREA\",\n      \"subcategory\": \"Furniture\",\n      \"itemName\": \"Pool Chairs\",\n      \"isAvailable\": true,\n      \"quantity\": 6,\n      \"condition\": \"Good\"\n    }\n  ]\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/facilities/bulk",
+							"host": ["{{baseUrl}}"],
+							"path": ["facilities", "bulk"]
+						},
+						"description": "Bulk create or update facilities for a villa"
+					}
+				},
+				{
+					"name": "Update Facility",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"isAvailable\": false,\n  \"condition\": \"Needs Repair\",\n  \"notes\": \"Coffee machine not working, requires servicing\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/facilities/{{facilityId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["facilities", "{{facilityId}}"]
+						},
+						"description": "Update facility information"
+					}
+				},
+				{
+					"name": "Get Facility Statistics",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/facilities/stats?villaId={{villaId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["facilities", "stats"],
+							"query": [
+								{
+									"key": "villaId",
+									"value": "{{villaId}}"
+								}
+							]
+						},
+						"description": "Get facility statistics by category and availability"
+					}
+				},
+				{
+					"name": "Get Facility Template",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/facilities/template",
+							"host": ["{{baseUrl}}"],
+							"path": ["facilities", "template"]
+						},
+						"description": "Get standard facility template for new villas"
+					}
+				}
+			],
+			"description": "Villa facility checklist management"
+		},
+		{
+			"name": "🏦 Bank Details",
+			"item": [
+				{
+					"name": "Get Bank Details by Villa",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/bank/villa/{{villaId}}?masked=true",
+							"host": ["{{baseUrl}}"],
+							"path": ["bank", "villa", "{{villaId}}"],
+							"query": [
+								{
+									"key": "masked",
+									"value": "true",
+									"description": "Set to false to get full account details"
+								}
+							]
+						},
+						"description": "Get bank details for a villa (masked for security)"
+					}
+				},
+				{
+					"name": "Create Bank Details",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"villaId\": \"{{villaId}}\",\n  \"accountHolderName\": \"John Doe Villa Management\",\n  \"bankName\": \"Bank Central Asia\",\n  \"accountNumber\": \"1234567890\",\n  \"iban\": \"ID331234567890123456\",\n  \"swiftCode\": \"CENAIDJA\",\n  \"branchCode\": \"001\",\n  \"currency\": \"IDR\",\n  \"bankAddress\": \"Jl. Jendral Sudirman 1\",\n  \"bankCountry\": \"Indonesia\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/bank",
+							"host": ["{{baseUrl}}"],
+							"path": ["bank"]
+						},
+						"description": "Create bank details for a villa"
+					}
+				},
+				{
+					"name": "Update Bank Details",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"accountHolderName\": \"John Doe Villa Management Ltd\",\n  \"bankAddress\": \"Jl. Jendral Sudirman 1, Jakarta\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/bank/{{bankId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["bank", "{{bankId}}"]
+						},
+						"description": "Update bank details"
+					}
+				},
+				{
+					"name": "Verify Bank Details",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/bank/{{bankId}}/verify",
+							"host": ["{{baseUrl}}"],
+							"path": ["bank", "{{bankId}}", "verify"]
+						},
+						"description": "Verify bank account details"
+					}
+				},
+				{
+					"name": "Validate Bank Information",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"accountNumber\": \"1234567890\",\n  \"iban\": \"ID331234567890123456\",\n  \"swiftCode\": \"CENAIDJA\",\n  \"bankCountry\": \"Indonesia\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/bank/validate",
+							"host": ["{{baseUrl}}"],
+							"path": ["bank", "validate"]
+						},
+						"description": "Validate bank account information format"
+					}
+				},
+				{
+					"name": "Search Banks",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/bank/search/banks?country=ID&search=Central",
+							"host": ["{{baseUrl}}"],
+							"path": ["bank", "search", "banks"],
+							"query": [
+								{
+									"key": "country",
+									"value": "ID"
+								},
+								{
+									"key": "search",
+									"value": "Central"
+								}
+							]
+						},
+						"description": "Search banks by country and name"
+					}
+				}
+			],
+			"description": "Secure bank account management for villas"
+		},
+		{
+			"name": "🌐 OTA Credentials",
+			"item": [
+				{
+					"name": "Get Available Platforms",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/ota/platforms",
+							"host": ["{{baseUrl}}"],
+							"path": ["ota", "platforms"]
+						},
+						"description": "Get list of available OTA platforms"
+					}
+				},
+				{
+					"name": "Get OTA Credentials by Villa",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/ota/villa/{{villaId}}?masked=true",
+							"host": ["{{baseUrl}}"],
+							"path": ["ota", "villa", "{{villaId}}"],
+							"query": [
+								{
+									"key": "masked",
+									"value": "true"
+								},
+								{
+									"key": "platform",
+									"value": "",
+									"disabled": true
+								}
+							]
+						},
+						"description": "Get all OTA credentials for a villa (masked for security)"
+					}
+				},
+				{
+					"name": "Create OTA Credentials",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"villaId\": \"{{villaId}}\",\n  \"platform\": \"BOOKING_COM\",\n  \"propertyId\": \"12345678\",\n  \"username\": \"villa.owner@example.com\",\n  \"password\": \"securePassword123\",\n  \"apiKey\": \"abc123def456\",\n  \"apiSecret\": \"secret789xyz\",\n  \"isActive\": true\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/ota",
+							"host": ["{{baseUrl}}"],
+							"path": ["ota"]
+						},
+						"description": "Create OTA platform credentials for a villa"
+					}
+				},
+				{
+					"name": "Update OTA Credentials",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"password\": \"newSecurePassword123\",\n  \"apiKey\": \"newApiKey456\",\n  \"isActive\": true\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/ota/{{otaCredentialsId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["ota", "{{otaCredentialsId}}"]
+						},
+						"description": "Update OTA credentials"
+					}
+				},
+				{
+					"name": "Test OTA Connection",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/ota/{{otaCredentialsId}}/test-connection",
+							"host": ["{{baseUrl}}"],
+							"path": ["ota", "{{otaCredentialsId}}", "test-connection"]
+						},
+						"description": "Test connection to OTA platform"
+					}
+				},
+				{
+					"name": "Sync with OTA Platform",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"syncType\": \"full\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/ota/{{otaCredentialsId}}/sync",
+							"host": ["{{baseUrl}}"],
+							"path": ["ota", "{{otaCredentialsId}}", "sync"]
+						},
+						"description": "Trigger sync with OTA platform (full or incremental)"
+					}
+				},
+				{
+					"name": "Activate OTA Credentials",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/ota/{{otaCredentialsId}}/activate",
+							"host": ["{{baseUrl}}"],
+							"path": ["ota", "{{otaCredentialsId}}", "activate"]
+						},
+						"description": "Activate OTA credentials"
+					}
+				},
+				{
+					"name": "Get OTA Statistics",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/ota/stats",
+							"host": ["{{baseUrl}}"],
+							"path": ["ota", "stats"]
+						},
+						"description": "Get OTA credentials statistics by platform and sync status"
+					}
+				}
+			],
+			"description": "Online Travel Agency platform credentials management"
+		},
+		{
+			"name": "📊 Dashboard & Analytics",
+			"item": [
+				{
+					"name": "Get Dashboard Overview",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/dashboard/overview",
+							"host": ["{{baseUrl}}"],
+							"path": ["dashboard", "overview"]
+						},
+						"description": "Get dashboard overview with key metrics"
+					}
+				},
+				{
+					"name": "Get Dashboard Statistics",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/dashboard/stats",
+							"host": ["{{baseUrl}}"],
+							"path": ["dashboard", "stats"]
+						},
+						"description": "Get basic dashboard statistics"
+					}
+				},
+				{
+					"name": "Get Villa Management Data",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/dashboard/villas?page=1&limit=10&status=ACTIVE",
+							"host": ["{{baseUrl}}"],
+							"path": ["dashboard", "villas"],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "10"
+								},
+								{
+									"key": "status",
+									"value": "ACTIVE"
+								},
+								{
+									"key": "destination",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "bedrooms",
+									"value": "",
+									"disabled": true
+								}
+							]
+						},
+						"description": "Get villa management data for dashboard"
+					}
+				},
+				{
+					"name": "Get Owner Management Data",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/dashboard/owners?page=1&limit=10",
+							"host": ["{{baseUrl}}"],
+							"path": ["dashboard", "owners"],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "10"
+								},
+								{
+									"key": "search",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "nationality",
+									"value": "",
+									"disabled": true
+								}
+							]
+						},
+						"description": "Get owner management data for dashboard"
+					}
+				},
+				{
+					"name": "Get Staff Management Data",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/dashboard/staff?page=1&limit=10",
+							"host": ["{{baseUrl}}"],
+							"path": ["dashboard", "staff"],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "10"
+								},
+								{
+									"key": "position",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "villaId",
+									"value": "",
+									"disabled": true
+								}
+							]
+						},
+						"description": "Get staff management data for dashboard"
+					}
+				},
+				{
+					"name": "Get Onboarding Overview",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/dashboard/onboarding-overview",
+							"host": ["{{baseUrl}}"],
+							"path": ["dashboard", "onboarding-overview"]
+						},
+						"description": "Get comprehensive onboarding overview"
+					}
+				},
+				{
+					"name": "Get Pending Approvals",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/dashboard/pending-approvals?page=1&limit=5",
+							"host": ["{{baseUrl}}"],
+							"path": ["dashboard", "pending-approvals"],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "5"
+								},
+								{
+									"key": "status",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "location",
+									"value": "",
+									"disabled": true
+								}
+							]
+						},
+						"description": "Get pending villa approvals for admin review"
+					}
+				},
+				{
+					"name": "Approve Villa",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"approvedBy\": \"admin-user-id\",\n  \"notes\": \"Villa meets all requirements. Approved for listing.\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/dashboard/approve/{{villaId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["dashboard", "approve", "{{villaId}}"]
+						},
+						"description": "Approve a villa onboarding application"
+					}
+				},
+				{
+					"name": "Reject Villa",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"rejectedBy\": \"admin-user-id\",\n  \"reason\": \"Missing required documentation. Please provide property insurance certificate and updated photos.\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/dashboard/reject/{{villaId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["dashboard", "reject", "{{villaId}}"]
+						},
+						"description": "Reject a villa onboarding application"
+					}
+				}
+			],
+			"description": "Dashboard analytics and management approval workflows"
+		},
+		{
+			"name": "☁️ SharePoint Integration",
+			"item": [
+				{
+					"name": "Get SharePoint Status",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/sharepoint/status",
+							"host": ["{{baseUrl}}"],
+							"path": ["sharepoint", "status"]
+						},
+						"description": "Get SharePoint service connection status"
+					}
+				},
+				{
+					"name": "Sync Document with SharePoint",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/sharepoint/sync-document/{{documentId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["sharepoint", "sync-document", "{{documentId}}"]
+						},
+						"description": "Sync a specific document with SharePoint"
+					}
+				},
+				{
+					"name": "Sync Villa with SharePoint",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/sharepoint/sync-villa/{{villaId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["sharepoint", "sync-villa", "{{villaId}}"]
+						},
+						"description": "Sync all villa documents with SharePoint"
+					}
+				},
+				{
+					"name": "SharePoint Test - Create Folders",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/sharepoint-test/create-test-folders",
+							"host": ["{{baseUrl}}"],
+							"path": ["sharepoint-test", "create-test-folders"]
+						},
+						"description": "Test SharePoint folder creation functionality"
+					}
+				},
+				{
+					"name": "SharePoint Test - List Folders",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/sharepoint-test/folders?path=/&limit=50",
+							"host": ["{{baseUrl}}"],
+							"path": ["sharepoint-test", "folders"],
+							"query": [
+								{
+									"key": "path",
+									"value": "/"
+								},
+								{
+									"key": "limit",
+									"value": "50"
+								}
+							]
+						},
+						"description": "List SharePoint folders and files"
+					}
+				},
+				{
+					"name": "SharePoint Test - Cleanup",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/sharepoint-test/cleanup-test-folders",
+							"host": ["{{baseUrl}}"],
+							"path": ["sharepoint-test", "cleanup-test-folders"]
+						},
+						"description": "Clean up test folders from SharePoint"
+					}
+				}
+			],
+			"description": "SharePoint integration for document and photo synchronization"
+		},
+		{
+			"name": "🔔 Notifications (Test)",
+			"item": [
+				{
+					"name": "Test Onboarding Submitted",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"villaId\": \"{{villaId}}\",\n  \"villaName\": \"Test Villa Paradise\",\n  \"ownerName\": \"John Doe\",\n  \"ownerEmail\": \"john.doe@example.com\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/notifications/test/onboarding-submitted",
+							"host": ["{{baseUrl}}"],
+							"path": ["notifications", "test", "onboarding-submitted"]
+						},
+						"description": "Test onboarding submitted notification"
+					}
+				},
+				{
+					"name": "Test Onboarding Approved",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"villaId\": \"{{villaId}}\",\n  \"villaName\": \"Test Villa Paradise\",\n  \"ownerName\": \"John Doe\",\n  \"ownerEmail\": \"john.doe@example.com\",\n  \"approvedBy\": \"Admin User\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/notifications/test/onboarding-approved",
+							"host": ["{{baseUrl}}"],
+							"path": ["notifications", "test", "onboarding-approved"]
+						},
+						"description": "Test onboarding approved notification"
+					}
+				},
+				{
+					"name": "Test Onboarding Rejected",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"villaId\": \"{{villaId}}\",\n  \"villaName\": \"Test Villa Paradise\",\n  \"ownerName\": \"John Doe\",\n  \"ownerEmail\": \"john.doe@example.com\",\n  \"rejectedBy\": \"Admin User\",\n  \"reason\": \"Missing required documentation\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/notifications/test/onboarding-rejected",
+							"host": ["{{baseUrl}}"],
+							"path": ["notifications", "test", "onboarding-rejected"]
+						},
+						"description": "Test onboarding rejected notification"
+					}
+				}
+			],
+			"description": "Notification testing endpoints for email and push notifications"
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"// Pre-request script for authentication and environment setup",
+					"// This runs before each request to ensure proper authentication",
+					"",
+					"// Check if auth token exists and is not expired",
+					"const authToken = pm.environment.get('authToken');",
+					"if (!authToken) {",
+					"    console.warn('No authentication token found. Please set authToken in environment.');",
+					"}",
+					"",
+					"// Set common headers",
+					"pm.request.headers.add({",
+					"    key: 'User-Agent',",
+					"    value: 'M1-Villa-Management-Postman-Collection/1.0'",
+					"});"
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"// Global test script that runs after each request",
+					"",
+					"// Test for successful response status",
+					"pm.test('Response status is successful', function () {",
+					"    pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+					"});",
+					"",
+					"// Test for JSON response format",
+					"pm.test('Response is JSON', function () {",
+					"    pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json');",
+					"});",
+					"",
+					"// Test for success field in response",
+					"pm.test('Response has success field', function () {",
+					"    const jsonData = pm.response.json();",
+					"    pm.expect(jsonData).to.have.property('success');",
+					"});",
+					"",
+					"// Auto-save important IDs from responses for subsequent requests",
+					"if (pm.response.code === 200 || pm.response.code === 201) {",
+					"    const jsonData = pm.response.json();",
+					"    ",
+					"    // Save villa ID if present",
+					"    if (jsonData.data && jsonData.data.id && pm.request.url.path.includes('villas')) {",
+					"        pm.environment.set('villaId', jsonData.data.id);",
+					"    }",
+					"    ",
+					"    // Save owner ID if present",
+					"    if (jsonData.data && jsonData.data.id && pm.request.url.path.includes('owners')) {",
+					"        pm.environment.set('ownerId', jsonData.data.id);",
+					"    }",
+					"    ",
+					"    // Save document ID if present",
+					"    if (jsonData.data && jsonData.data.id && pm.request.url.path.includes('documents')) {",
+					"        pm.environment.set('documentId', jsonData.data.id);",
+					"    }",
+					"}",
+					"",
+					"// Log response time",
+					"pm.test('Response time is reasonable', function () {",
+					"    pm.expect(pm.response.responseTime).to.be.below(10000);",
+					"});"
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:4001/api",
+			"type": "string"
+		},
+		{
+			"key": "authToken",
+			"value": "your-clerk-auth-token-here",
+			"type": "string"
+		},
+		{
+			"key": "villaId",
+			"value": "sample-villa-id",
+			"type": "string"
+		},
+		{
+			"key": "ownerId",
+			"value": "sample-owner-id",
+			"type": "string"
+		},
+		{
+			"key": "documentId",
+			"value": "sample-document-id",
+			"type": "string"
+		},
+		{
+			"key": "photoId",
+			"value": "sample-photo-id",
+			"type": "string"
+		},
+		{
+			"key": "staffId",
+			"value": "sample-staff-id",
+			"type": "string"
+		},
+		{
+			"key": "facilityId",
+			"value": "sample-facility-id",
+			"type": "string"
+		},
+		{
+			"key": "bankId",
+			"value": "sample-bank-id",
+			"type": "string"
+		},
+		{
+			"key": "otaCredentialsId",
+			"value": "sample-ota-credentials-id",
+			"type": "string"
+		},
+		{
+			"key": "userId",
+			"value": "sample-user-id",
+			"type": "string"
+		}
+	]
+}

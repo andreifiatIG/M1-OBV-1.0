@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "PhotoCategory" ADD VALUE 'ENTERTAINMENT';

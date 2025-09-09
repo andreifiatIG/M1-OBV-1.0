@@ -1,0 +1,181 @@
+// Additional models and fields needed for enhanced onboarding progress and skip functionality
+
+// Enhanced Onboarding Progress with Skip Tracking
+model OnboardingStepProgress {
+  id                String   @id @default(uuid())
+  villaId           String
+  villa             Villa    @relation(fields: [villaId], references: [id], onDelete: Cascade)
+  
+  stepNumber        Int
+  stepName          String
+  
+  // Progress Status
+  status            StepStatus @default(NOT_STARTED)
+  startedAt         DateTime?
+  completedAt       DateTime?
+  skippedAt         DateTime?
+  lastUpdatedAt     DateTime @updatedAt
+  
+  // Field-level tracking
+  fields            StepFieldProgress[]
+  
+  // Validation and Dependencies
+  isValid           Boolean @default(false)
+  validationErrors  Json? // Store validation error details
+  dependsOnSteps    Int[] // Array of step numbers this step depends on
+  
+  // Metadata
+  estimatedDuration Int? // Minutes to complete
+  actualDuration    Int? // Minutes actually taken
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@unique([villaId, stepNumber])
+  @@index([villaId, status])
+  @@index([stepNumber])
+}
+
+// Field-level progress tracking within each step
+model StepFieldProgress {
+  id                String   @id @default(uuid())
+  stepProgressId    String
+  stepProgress      OnboardingStepProgress @relation(fields: [stepProgressId], references: [id], onDelete: Cascade)
+  
+  fieldName         String
+  fieldLabel        String?
+  fieldType         String // text, email, number, select, file, etc.
+  
+  // Field Status
+  status            FieldStatus @default(NOT_STARTED)
+  isSkipped         Boolean @default(false)
+  skipReason        String? // Why was this field skipped
+  
+  // Field Value and Validation
+  value             Json? // Store the actual field value
+  isValid           Boolean @default(false)
+  validationMessage String?
+  
+  // Timestamps
+  startedAt         DateTime?
+  completedAt       DateTime?
+  skippedAt         DateTime?
+  lastModifiedAt    DateTime @updatedAt
+  
+  // Metadata
+  isRequired        Boolean @default(false)
+  dependsOnFields   String[] // Array of field names this field depends on
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@unique([stepProgressId, fieldName])
+  @@index([stepProgressId, status])
+  @@index([isSkipped])
+}
+
+// Enhanced skip tracking with reasons and metadata
+model SkippedItem {
+  id            String   @id @default(uuid())
+  villaId       String
+  villa         Villa    @relation(fields: [villaId], references: [id], onDelete: Cascade)
+  
+  // What was skipped
+  itemType      SkippedItemType // STEP, FIELD, SECTION
+  stepNumber    Int?
+  fieldName     String?
+  sectionName   String?
+  
+  // Skip details
+  skipReason    String? // User-provided reason
+  skipCategory  SkipCategory // NOT_APPLICABLE, DATA_UNAVAILABLE, LATER, OPTIONAL
+  
+  // User who skipped
+  skippedBy     String // User ID
+  skippedAt     DateTime @default(now())
+  
+  // Can be unskipped
+  isActive      Boolean @default(true)
+  unskippedAt   DateTime?
+  unskippedBy   String?
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  @@index([villaId, itemType])
+  @@index([villaId, stepNumber])
+  @@index([isActive])
+}
+
+// Onboarding session tracking for audit and analytics
+model OnboardingSession {
+  id                String   @id @default(uuid())
+  villaId           String
+  villa             Villa    @relation(fields: [villaId], references: [id], onDelete: Cascade)
+  
+  // Session details
+  userId            String
+  userEmail         String?
+  sessionStartedAt  DateTime @default(now())
+  sessionEndedAt    DateTime?
+  lastActivityAt    DateTime @updatedAt
+  
+  // Progress tracking
+  currentStep       Int @default(1)
+  totalSteps        Int @default(10)
+  stepsCompleted    Int @default(0)
+  stepsSkipped      Int @default(0)
+  fieldsCompleted   Int @default(0)
+  fieldsSkipped     Int @default(0)
+  totalFields       Int @default(0)
+  
+  // Completion
+  isCompleted       Boolean @default(false)
+  completedAt       DateTime?
+  submittedForReview Boolean @default(false)
+  submittedAt       DateTime?
+  
+  // Performance metrics
+  totalTimeSpent    Int? // Minutes
+  averageStepTime   Int? // Minutes per step
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@unique([villaId])
+  @@index([userId])
+  @@index([isCompleted])
+}
+
+// Enums for the new models
+enum StepStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+  SKIPPED
+  BLOCKED      // Cannot start due to dependencies
+  ERROR        // Has validation errors
+}
+
+enum FieldStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+  SKIPPED
+  ERROR
+}
+
+enum SkippedItemType {
+  STEP
+  FIELD
+  SECTION
+}
+
+enum SkipCategory {
+  NOT_APPLICABLE      // This item doesn't apply to this villa
+  DATA_UNAVAILABLE    // Don't have this information right now
+  LATER              // Will complete this later
+  OPTIONAL           // This is optional and choosing not to fill
+  PRIVACY_CONCERNS   // Don't want to share this information
+  OTHER              // Other reason (should specify in skipReason)
+}

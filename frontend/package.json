@@ -1,0 +1,55 @@
+{
+  "name": "@ils/m1-villa-management",
+  "version": "1.0.0",
+  "description": "ILS M1 Villa Management System - Frontend",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3001",
+    "dev:with-backend": "npm-run-all --parallel dev:frontend dev:backend",
+    "dev:frontend": "set NODE_OPTIONS=--max-old-space-size=4096 && next dev",
+    "dev:backend": "cd ../backend && npm run dev",
+    "build": "next build",
+    "start": "next start -p 3001",
+    "lint": "next lint --fix",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@clerk/nextjs": "^6.31.1",
+    "@heroicons/react": "^2.2.0",
+    "@types/lodash": "^4.17.20",
+    "clsx": "^2.1.0",
+    "date-fns": "^3.6.0",
+    "jspdf": "^3.0.1",
+    "lodash": "^4.17.21",
+    "lucide-react": "^0.542.0",
+    "next": "15.4.3",
+    "npm-run-all": "^4.1.5",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "sonner": "^1.4.0",
+    "tailwind-merge": "^2.2.0",
+    "tailwindcss-animate": "^1.0.7",
+    "use-debounce": "^10.0.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.11",
+    "@types/node": "^18.17.0",
+    "@types/react": "^18.2.55",
+    "@types/react-dom": "^18.2.19",
+    "autoprefixer": "^10.0.1",
+    "eslint": "^8.57.0",
+    "eslint-config-next": "15.4.3",
+    "postcss": "^8.4.33",
+    "tailwindcss": "^3.4.1",
+    "typescript": "~5.0.3"
+  },
+  "keywords": [
+    "nextjs",
+    "react",
+    "villa-management",
+    "ils",
+    "convex"
+  ],
+  "author": "ILS Team",
+  "license": "MIT"
+}

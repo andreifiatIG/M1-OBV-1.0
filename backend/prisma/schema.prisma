@@ -1,0 +1,740 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Villa {
+  id                 String                   @id @default(uuid())
+  villaCode          String                   @unique
+  villaName          String
+  location           String
+  address            String
+  city               String
+  country            String
+  zipCode            String?
+  latitude           Float?
+  longitude          Float?
+  bedrooms           Int
+  bathrooms          Int
+  maxGuests          Int
+  propertySize       Float?
+  plotSize           Float?
+  yearBuilt          Int?
+  renovationYear     Int?
+  propertyType       PropertyType
+  villaStyle         VillaStyle?
+  description        String?
+  shortDescription   String?
+  status             VillaStatus              @default(DRAFT)
+  isActive           Boolean                  @default(true)
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+  documentsPath      String?
+  photosPath         String?
+  sharePointPath     String?
+  googleMapsLink     String?
+  iCalCalendarLink   String?
+  oldRatesCardLink   String?
+  bankDetails        BankDetails?
+  contractualDetails ContractualDetails?
+  documents          Document[]
+  facilities         FacilityChecklist[]
+  otaCredentials     OTACredentials[]
+  onboardingBackups  OnboardingBackup[]
+  onboarding         OnboardingProgress?
+  onboardingSession  OnboardingSession?
+  stepProgress       OnboardingStepProgress[]
+  owner              Owner?
+  photos             Photo[]
+  staff              Staff[]
+  skippedItems       SkippedItem[]
+
+  @@index([villaCode])
+  @@index([status])
+  @@index([isActive])
+  @@index([city, country])
+  @@index([propertyType, status])
+  @@index([bedrooms, bathrooms, maxGuests])
+}
+
+model Owner {
+  id                          String                  @id @default(uuid())
+  villaId                     String                  @unique
+  firstName                   String                  @db.VarChar(100)
+  lastName                    String                  @db.VarChar(100)
+  email                       String                  @db.VarChar(255)
+  phone                       String                  @db.VarChar(50)
+  alternativePhone            String?
+  nationality                 String?
+  passportNumber              String?
+  idNumber                    String?
+  address                     String
+  city                        String
+  country                     String
+  zipCode                     String?
+  preferredLanguage           String                  @default("en")
+  communicationPreference     CommunicationPreference @default(EMAIL)
+  notes                       String?
+  createdAt                   DateTime                @default(now())
+  updatedAt                   DateTime                @updatedAt
+  alternativePhoneCountryCode String?
+  alternativePhoneDialCode    String?
+  phoneCountryCode            String?
+  phoneDialCode               String?
+  companyAddress              String?
+  companyName                 String?
+  companyTaxId                String?
+  companyVat                  String?
+  managerEmail                String?
+  managerName                 String?
+  managerPhone                String?
+  managerPhoneCountryCode     String?
+  managerPhoneDialCode        String?
+  ownerType                   OwnerType               @default(INDIVIDUAL)
+  propertyEmail               String?
+  propertyWebsite             String?
+  villa                       Villa                   @relation(fields: [villaId], references: [id], onDelete: Cascade)
+
+  @@index([email])
+  @@index([villaId, firstName, lastName])
+  @@index([nationality])
+}
+
+model ContractualDetails {
+  id                    String             @id @default(uuid())
+  villaId               String             @unique
+  contractStartDate     DateTime
+  contractEndDate       DateTime?
+  contractType          ContractType
+  commissionRate        Decimal            @db.Decimal(5, 2)
+  managementFee         Decimal?           @db.Decimal(5, 2)
+  marketingFee          Decimal?           @db.Decimal(5, 2)
+  paymentTerms          String?
+  paymentSchedule       PaymentSchedule    @default(MONTHLY)
+  minimumStayNights     Int                @default(1)
+  cancellationPolicy    CancellationPolicy @default(MODERATE)
+  checkInTime           String             @default("15:00")
+  checkOutTime          String             @default("11:00")
+  insuranceProvider     String?
+  insurancePolicyNumber String?
+  insuranceExpiry       DateTime?
+  specialTerms          String?
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+  payoutDay1            Int?
+  payoutDay2            Int?
+  dbdNumber             String?
+  paymentThroughIPL     Boolean            @default(false)
+  vatPaymentTerms       String?
+  vatRegistrationNumber String?
+  villa                 Villa              @relation(fields: [villaId], references: [id], onDelete: Cascade)
+}
+
+model BankDetails {
+  id                String    @id @default(uuid())
+  villaId           String    @unique
+  accountHolderName String    @db.VarChar(200)
+  bankName          String    @db.VarChar(200)
+  accountNumber     String    @db.VarChar(50)
+  iban              String?   @db.VarChar(34)
+  swiftCode         String?   @db.VarChar(11)
+  branchCode        String?
+  currency          String    @default("USD")
+  bankAddress       String?
+  bankCountry       String?
+  isVerified        Boolean   @default(false)
+  verifiedAt        DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  notes             String?
+  branchName        String?   @db.VarChar(200)
+  branchAddress     String?
+  accountType       String?   @default("CHECKING")
+  villa             Villa     @relation(fields: [villaId], references: [id], onDelete: Cascade)
+}
+
+model OTACredentials {
+  id          String      @id @default(uuid())
+  villaId     String
+  platform    OTAPlatform
+  propertyId  String?
+  username    String?
+  password    String?
+  apiKey      String?
+  apiSecret   String?
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  accountUrl  String?
+  propertyUrl String?
+  listingUrl  String?
+  villa       Villa       @relation(fields: [villaId], references: [id], onDelete: Cascade)
+
+  @@unique([villaId, platform])
+  @@index([platform])
+}
+
+model Staff {
+  id                 String          @id @default(uuid())
+  villaId            String
+  firstName          String
+  lastName           String
+  email              String?
+  phone              String
+  idNumber           String?
+  nationality        String?
+  position           StaffPosition
+  department         StaffDepartment
+  employmentType     EmploymentType
+  startDate          DateTime
+  endDate            DateTime?
+  salary             Decimal         @db.Decimal(10, 2)
+  salaryFrequency    SalaryFrequency @default(MONTHLY)
+  currency           String          @default("USD") @db.VarChar(3)
+  hasAccommodation   Boolean         @default(false)
+  hasTransport       Boolean         @default(false)
+  hasHealthInsurance Boolean         @default(false)
+  hasWorkInsurance   Boolean         @default(false)
+  isActive           Boolean         @default(true)
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  dateOfBirth        DateTime?
+  emergencyContacts  Json?
+  foodAllowance      Boolean         @default(false)
+  maritalStatus      Boolean?
+  nickname           String?
+  numberOfDaySalary  Int?
+  otherDeductions    Decimal?
+  serviceCharge      Decimal?
+  totalIncome        Decimal?
+  totalNetIncome     Decimal?
+  transportation     String?
+  passportNumber     String?
+  villa              Villa           @relation(fields: [villaId], references: [id], onDelete: Cascade)
+
+  @@index([villaId])
+  @@index([position])
+  @@index([villaId, isActive])
+  @@index([position, department])
+}
+
+model Photo {
+  id               String        @id @default(uuid())
+  villaId          String
+  category         PhotoCategory
+  fileName         String
+  fileUrl          String
+  thumbnailUrl     String?
+  fileSize         Int
+  mimeType         String
+  width            Int?
+  height           Int?
+  caption          String?
+  altText          String?
+  tags             String[]
+  isMain           Boolean       @default(false)
+  sortOrder        Int           @default(0)
+  subfolder        String?       // For organizing photos by bedroom, etc.
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  sharePointFileId String?
+  sharePointPath   String?
+  // Database file storage
+  fileContent      Bytes?        // Original file content
+  thumbnailContent Bytes?        // Compressed thumbnail
+  isCompressed     Boolean       @default(false)
+  originalFileSize Int?          // Size before compression
+  storageLocation  String        @default("database") // "database", "local", "sharepoint"
+  villa            Villa         @relation(fields: [villaId], references: [id], onDelete: Cascade)
+
+  @@index([villaId, category])
+  @@index([villaId, subfolder])
+  @@index([isMain])
+}
+
+model Document {
+  id               String       @id @default(uuid())
+  villaId          String
+  documentType     DocumentType
+  fileName         String
+  fileUrl          String
+  fileSize         Int
+  mimeType         String
+  description      String?
+  isActive         Boolean      @default(true)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  deletedAt        DateTime?
+  sharePointFileId String?
+  sharePointPath   String?
+  // Database file storage
+  fileContent      Bytes?       // Original file content
+  isCompressed     Boolean      @default(false)
+  originalFileSize Int?         // Size before compression
+  storageLocation  String       @default("database") // "database", "local", "sharepoint"
+  villa            Villa        @relation(fields: [villaId], references: [id], onDelete: Cascade)
+
+  @@index([villaId, documentType])
+}
+
+
+model FacilityChecklist {
+  id            String           @id @default(uuid())
+  villaId       String
+  category      FacilityCategory
+  subcategory   String
+  itemName      String
+  isAvailable   Boolean          @default(false)
+  quantity      Int?              @default(1)
+  condition     String?           @default("good")
+  notes         String?           @db.Text
+  specifications String?          @db.Text
+  
+  // Photo storage - dual approach for performance
+  photoUrl      String?           // SharePoint URL (backup/full quality)
+  photoData     Bytes?            // Local bytea storage for thumbnails
+  photoMimeType String?           // MIME type for local photo
+  photoSize     Int?              // Size in bytes
+  photoWidth    Int?              // Image dimensions for UI optimization
+  photoHeight   Int?
+  
+  productLink   String?
+  lastCheckedAt DateTime?         @default(now())
+  checkedBy     String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  villa         Villa            @relation(fields: [villaId], references: [id], onDelete: Cascade)
+
+  @@unique([villaId, category, subcategory, itemName])
+  @@index([villaId, category])
+  @@index([villaId, isAvailable]) // Performance for filtering available items
+}
+
+model OnboardingProgress {
+  id                          String           @id @default(uuid())
+  villaId                     String           @unique
+  currentStep                 Int              @default(1)
+  totalSteps                  Int              @default(10)
+  villaInfoCompleted          Boolean          @default(false)
+  ownerDetailsCompleted       Boolean          @default(false)
+  contractualDetailsCompleted Boolean          @default(false)
+  bankDetailsCompleted        Boolean          @default(false)
+  otaCredentialsCompleted     Boolean          @default(false)
+  staffConfigCompleted        Boolean          @default(false)
+  facilitiesCompleted         Boolean          @default(false)
+  photosUploaded              Boolean          @default(false)
+  documentsUploaded           Boolean          @default(false)
+  reviewCompleted             Boolean          @default(false)
+  status                      OnboardingStatus @default(IN_PROGRESS)
+  createdAt                   DateTime         @default(now())
+  updatedAt                   DateTime         @updatedAt
+  villa                       Villa            @relation(fields: [villaId], references: [id], onDelete: Cascade)
+
+  @@index([status, currentStep])
+  @@index([villaId, status])
+  @@index([updatedAt])
+}
+
+model OnboardingBackup {
+  id              String    @id @default(uuid())
+  userId          String
+  sessionId       String
+  villaId         String?
+  currentStep     Int
+  stepData        Json
+  lastSaved       DateTime
+  userAgent       String
+  version         String
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  autoSaveEnabled Boolean   @default(true)
+  lastAutoSave    DateTime?
+  villa           Villa?    @relation(fields: [villaId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, sessionId])
+  @@index([userId, villaId])
+  @@index([lastSaved])
+}
+
+model OnboardingStepProgress {
+  id                String              @id @default(uuid())
+  villaId           String
+  stepNumber        Int
+  stepName          String
+  status            StepStatus          @default(NOT_STARTED)
+  startedAt         DateTime?
+  completedAt       DateTime?
+  skippedAt         DateTime?
+  lastUpdatedAt     DateTime            @updatedAt
+  isValid           Boolean             @default(false)
+  validationErrors  Json?
+  dependsOnSteps    Int[]
+  estimatedDuration Int?
+  actualDuration    Int?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  villa             Villa               @relation(fields: [villaId], references: [id], onDelete: Cascade)
+  fields            StepFieldProgress[]
+
+  @@unique([villaId, stepNumber])
+  @@index([villaId, status])
+  @@index([stepNumber])
+}
+
+model StepFieldProgress {
+  id                String                 @id @default(uuid())
+  stepProgressId    String
+  fieldName         String
+  fieldLabel        String?
+  fieldType         String
+  status            FieldStatus            @default(NOT_STARTED)
+  isSkipped         Boolean                @default(false)
+  skipReason        String?
+  value             Json?
+  isValid           Boolean                @default(false)
+  validationMessage String?
+  startedAt         DateTime?
+  completedAt       DateTime?
+  skippedAt         DateTime?
+  lastModifiedAt    DateTime               @updatedAt
+  isRequired        Boolean                @default(false)
+  dependsOnFields   String[]
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+  stepProgress      OnboardingStepProgress @relation(fields: [stepProgressId], references: [id], onDelete: Cascade)
+
+  @@unique([stepProgressId, fieldName])
+  @@index([stepProgressId, status])
+  @@index([isSkipped])
+}
+
+model SkippedItem {
+  id           String          @id @default(uuid())
+  villaId      String
+  itemType     SkippedItemType
+  stepNumber   Int?
+  fieldName    String?
+  sectionName  String?
+  skipReason   String?
+  skipCategory SkipCategory
+  skippedBy    String
+  skippedAt    DateTime        @default(now())
+  isActive     Boolean         @default(true)
+  unskippedAt  DateTime?
+  unskippedBy  String?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  villa        Villa           @relation(fields: [villaId], references: [id], onDelete: Cascade)
+
+  @@index([villaId, itemType])
+  @@index([villaId, stepNumber])
+  @@index([isActive])
+}
+
+model OnboardingSession {
+  id                 String    @id @default(uuid())
+  villaId            String    @unique
+  userId             String
+  userEmail          String?
+  sessionStartedAt   DateTime  @default(now())
+  sessionEndedAt     DateTime?
+  lastActivityAt     DateTime  @updatedAt
+  currentStep        Int       @default(1)
+  totalSteps         Int       @default(10)
+  stepsCompleted     Int       @default(0)
+  stepsSkipped       Int       @default(0)
+  fieldsCompleted    Int       @default(0)
+  fieldsSkipped      Int       @default(0)
+  totalFields        Int       @default(0)
+  isCompleted        Boolean   @default(false)
+  completedAt        DateTime?
+  submittedForReview Boolean   @default(false)
+  submittedAt        DateTime?
+  totalTimeSpent     Int?
+  averageStepTime    Int?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  villa              Villa     @relation(fields: [villaId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isCompleted])
+}
+
+
+enum PropertyType {
+  VILLA
+  APARTMENT
+  PENTHOUSE
+  TOWNHOUSE
+  CHALET
+  BUNGALOW
+  ESTATE
+  HOUSE
+}
+
+enum VillaStyle {
+  MODERN
+  TRADITIONAL
+  MEDITERRANEAN
+  CONTEMPORARY
+  BALINESE
+  MINIMALIST
+  LUXURY
+  RUSTIC
+}
+
+enum VillaStatus {
+  DRAFT
+  PENDING_REVIEW
+  APPROVED
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum OwnerType {
+  INDIVIDUAL
+  COMPANY
+}
+
+enum CommunicationPreference {
+  EMAIL
+  PHONE
+  WHATSAPP
+  SMS
+}
+
+enum ContractType {
+  EXCLUSIVE
+  NON_EXCLUSIVE
+  SEASONAL
+  LONG_TERM
+}
+
+enum PaymentSchedule {
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+  QUARTERLY
+  ANNUALLY
+}
+
+enum CancellationPolicy {
+  FLEXIBLE
+  MODERATE
+  STRICT
+  SUPER_STRICT
+  NON_REFUNDABLE
+}
+
+enum OTAPlatform {
+  BOOKING_COM
+  AIRBNB
+  VRBO
+  EXPEDIA
+  AGODA
+  MARRIOTT_HOMES_VILLAS
+  HOMEAWAY
+  FLIPKEY
+  DIRECT
+}
+
+enum SyncStatus {
+  PENDING
+  IN_PROGRESS
+  SUCCESS
+  FAILED
+  PARTIAL
+}
+
+enum StaffPosition {
+  VILLA_MANAGER
+  HOUSEKEEPER
+  GARDENER
+  POOL_MAINTENANCE
+  SECURITY
+  CHEF
+  DRIVER
+  CONCIERGE
+  MAINTENANCE
+  OTHER
+}
+
+enum StaffDepartment {
+  MANAGEMENT
+  HOUSEKEEPING
+  MAINTENANCE
+  SECURITY
+  HOSPITALITY
+  ADMINISTRATION
+}
+
+enum EmploymentType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  SEASONAL
+  FREELANCE
+}
+
+enum EmergencyContactRelationship {
+  SPOUSE
+  PARTNER
+  PARENT
+  CHILD
+  SIBLING
+  FRIEND
+  COLLEAGUE
+  NEIGHBOR
+  RELATIVE
+  OTHER
+}
+
+enum SalaryFrequency {
+  HOURLY
+  DAILY
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+  ANNUALLY
+}
+
+enum PhotoCategory {
+  EXTERIOR_VIEWS
+  INTERIOR_LIVING_SPACES
+  BEDROOMS
+  BATHROOMS
+  KITCHEN
+  DINING_AREAS
+  POOL_OUTDOOR_AREAS
+  GARDEN_LANDSCAPING
+  AMENITIES_FACILITIES
+  VIEWS_SURROUNDINGS
+  STAFF_AREAS
+  UTILITY_AREAS
+  LOGO
+  FLOOR_PLAN
+  VIDEOS
+  DRONE_SHOTS
+  ENTERTAINMENT
+  VIRTUAL_TOUR
+  OTHER
+}
+
+enum DocumentType {
+  PROPERTY_CONTRACT
+  INSURANCE_CERTIFICATE
+  PROPERTY_TITLE
+  TAX_DOCUMENTS
+  UTILITY_BILLS
+  MAINTENANCE_RECORDS
+  INVENTORY_LIST
+  HOUSE_RULES
+  EMERGENCY_CONTACTS
+  STAFF_CONTRACTS
+  LICENSES_PERMITS
+  FLOOR_PLANS
+  OTHER
+  MAINTENANCE_CONTRACTS
+}
+
+enum AgreementType {
+  PROPERTY_MANAGEMENT
+  OWNER_SERVICE
+  STAFF_EMPLOYMENT
+  MAINTENANCE_SERVICE
+  MARKETING
+  PARTNERSHIP
+  VENDOR_SERVICE
+  OTHER
+}
+
+enum AgreementStatus {
+  DRAFT
+  SENT
+  NEGOTIATING
+  SIGNED
+  ACTIVE
+  EXPIRED
+  TERMINATED
+  CANCELLED
+}
+
+enum FacilityCategory {
+  // New frontend-matching categories (kebab-case)
+  property_layout_spaces
+  occupancy_sleeping
+  bathrooms
+  kitchen_dining
+  service_staff
+  living_spaces
+  outdoor_facilities
+  home_office
+  entertainment_gaming
+  technology
+  wellness_spa
+  accessibility
+  safety_security
+  child_friendly
+  
+  // Legacy categories (kept for backward compatibility)
+  KITCHEN_EQUIPMENT
+  BATHROOM_AMENITIES
+  BEDROOM_AMENITIES
+  LIVING_ROOM
+  OUTDOOR_FACILITIES
+  POOL_AREA
+  ENTERTAINMENT
+  SAFETY_SECURITY
+  UTILITIES
+  ACCESSIBILITY
+  BUSINESS_FACILITIES
+  CHILDREN_FACILITIES
+  PET_FACILITIES
+  OTHER
+}
+
+enum OnboardingStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+  COMPLETED
+}
+
+enum StepStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+  SKIPPED
+  BLOCKED
+  ERROR
+}
+
+enum FieldStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+  SKIPPED
+  ERROR
+}
+
+enum SkippedItemType {
+  STEP
+  FIELD
+  SECTION
+}
+
+enum SkipCategory {
+  NOT_APPLICABLE
+  DATA_UNAVAILABLE
+  LATER
+  OPTIONAL
+  PRIVACY_CONCERNS
+  OTHER
+}

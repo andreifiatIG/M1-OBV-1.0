@@ -1,0 +1,226 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  color: var(--foreground);
+  background-color: #f0f4f8; /* Fallback */
+  background-image: radial-gradient(125% 125% at 50% 90%, #ffffff 40%, #14b8a6 100%);
+  background-attachment: fixed;
+  min-height: 100vh;
+}
+
+/* === Advanced Glassmorphism Card System === */
+
+/* Advanced Teal Glassmorphism Cards - Final Version */
+.glass-card-teal {
+  /* Normal state now matches previous hover state */
+  background: linear-gradient(135deg, 
+    rgba(0, 153, 144, 0.7) 0%, 
+    rgba(0, 153, 144, 0.5) 50%, 
+    rgba(255, 255, 255, 0.2) 100%);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(0, 153, 144, 0.6);
+  border-radius: 16px;
+  box-shadow: 
+    0 16px 48px rgba(0, 153, 144, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    inset 0 -1px 0 rgba(0, 153, 144, 0.2);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-card-teal:hover {
+  /* Enhanced hover with stronger colors and shadows */
+  background: linear-gradient(135deg, 
+    rgba(0, 153, 144, 0.85) 0%, 
+    rgba(0, 153, 144, 0.7) 50%, 
+    rgba(255, 255, 255, 0.25) 100%);
+  border: 2px solid rgba(0, 153, 144, 0.8);
+  box-shadow: 
+    0 24px 64px rgba(0, 153, 144, 0.4),
+    0 0 0 4px rgba(0, 153, 144, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4),
+    inset 0 -1px 0 rgba(0, 153, 144, 0.3);
+  transform: translateY(-4px);
+}
+
+.glass-card-teal::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(0, 153, 144, 0.8),
+    transparent
+  );
+}
+
+.glass-card-teal::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 100%;
+  background: linear-gradient(
+    180deg,
+    rgba(0, 153, 144, 0.8),
+    transparent,
+    rgba(0, 153, 144, 0.3)
+  );
+}
+
+/* Compact version for smaller elements */
+.glass-card-teal-sm {
+  /* Normal state now matches previous hover state */
+  background: linear-gradient(135deg, 
+    rgba(0, 153, 144, 0.6) 0%, 
+    rgba(0, 153, 144, 0.4) 50%, 
+    rgba(255, 255, 255, 0.15) 100%);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(0, 153, 144, 0.5);
+  border-radius: 12px;
+  box-shadow: 
+    0 8px 32px rgba(0, 153, 144, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.25),
+    inset 0 -1px 0 rgba(0, 153, 144, 0.15);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-card-teal-sm:hover {
+  /* Enhanced hover with stronger colors and shadows */
+  background: linear-gradient(135deg, 
+    rgba(0, 153, 144, 0.75) 0%, 
+    rgba(0, 153, 144, 0.6) 50%, 
+    rgba(255, 255, 255, 0.2) 100%);
+  border: 2px solid rgba(0, 153, 144, 0.7);
+  box-shadow: 
+    0 16px 48px rgba(0, 153, 144, 0.3),
+    0 0 0 3px rgba(0, 153, 144, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    inset 0 -1px 0 rgba(0, 153, 144, 0.25);
+  transform: translateY(-2px);
+}
+
+/* White Glassmorphism with Dark Teal Influence */
+.glass-card-white-teal {
+  background: rgba(255, 255, 255, 0.4);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-radius: 20px;
+  border: 1px solid rgba(0, 153, 144, 0.3);
+  box-shadow: 
+    0 8px 32px rgba(0, 153, 144, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    inset 0 -1px 0 rgba(0, 153, 144, 0.1),
+    inset 0 0 20px 10px rgba(0, 153, 144, 0.05);
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-card-white-teal:hover {
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(0, 153, 144, 0.5);
+  box-shadow: 
+    0 12px 40px rgba(0, 153, 144, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    inset 0 -1px 0 rgba(0, 153, 144, 0.2),
+    inset 0 0 20px 10px rgba(0, 153, 144, 0.08);
+  transform: translateY(-2px);
+}
+
+.glass-card-white-teal::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(0, 153, 144, 0.8),
+    transparent
+  );
+}
+
+.glass-card-white-teal::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 100%;
+  background: linear-gradient(
+    180deg,
+    rgba(0, 153, 144, 0.8),
+    transparent,
+    rgba(0, 153, 144, 0.3)
+  );
+}
+
+/* Form Inputs for White Glassmorphism Cards */
+.form-input-white-teal {
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(0, 153, 144, 0.4);
+  border-radius: 8px;
+  color: #1e293b;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.form-input-white-teal::placeholder {
+  color: #64748b;
+  opacity: 0.8;
+}
+
+.form-input-white-teal:focus {
+  background: rgba(255, 255, 255, 0.8);
+  border: 2px solid rgba(0, 153, 144, 0.6);
+  outline: none;
+  box-shadow: 
+    0 0 0 3px rgba(0, 153, 144, 0.1),
+    0 4px 12px rgba(0, 153, 144, 0.15);
+}
+
+.form-input-white-teal:hover {
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(0, 153, 144, 0.5);
+}
+
+/* Error state for white teal inputs */
+.form-input-white-teal.error {
+  border: 1px solid rgba(239, 68, 68, 0.6);
+  background: rgba(254, 242, 242, 0.8);
+}
+
+.form-input-white-teal.error:focus {
+  border: 2px solid rgba(239, 68, 68, 0.8);
+  box-shadow: 
+    0 0 0 3px rgba(239, 68, 68, 0.1),
+    0 4px 12px rgba(239, 68, 68, 0.15);
+}
