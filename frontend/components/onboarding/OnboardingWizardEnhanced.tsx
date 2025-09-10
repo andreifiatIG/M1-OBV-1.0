@@ -107,12 +107,27 @@ const OnboardingWizardContent: React.FC = () => {
           // Only update if we have valid field progress data
           if (Object.keys(validFieldProgress).length > 0) {
             // Special handling for bedrooms data in step 9 (parse JSON)
-            if (stepNumber === 9 && validFieldProgress.bedrooms) {
-              try {
-                validFieldProgress.bedrooms = JSON.parse(validFieldProgress.bedrooms);
-              } catch (e) {
-                console.warn('Failed to parse bedrooms JSON:', e);
-                delete validFieldProgress.bedrooms;
+            if (stepNumber === 9) {
+              // Try to parse bedrooms field
+              if (validFieldProgress.bedrooms) {
+                try {
+                  validFieldProgress.bedrooms = JSON.parse(validFieldProgress.bedrooms);
+                  console.log('[ROOMS] Loaded bedrooms from field progress:', validFieldProgress.bedrooms);
+                } catch (e) {
+                  console.warn('Failed to parse bedrooms JSON:', e);
+                  delete validFieldProgress.bedrooms;
+                }
+              }
+              
+              // Also check for bedrooms_config as fallback (enhanced persistence)
+              if (!validFieldProgress.bedrooms && validFieldProgress.bedrooms_config) {
+                try {
+                  validFieldProgress.bedrooms = JSON.parse(validFieldProgress.bedrooms_config);
+                  console.log('[ROOMS] Loaded bedrooms from bedrooms_config field:', validFieldProgress.bedrooms);
+                  delete validFieldProgress.bedrooms_config; // Remove duplicate field
+                } catch (e) {
+                  console.warn('Failed to parse bedrooms_config JSON:', e);
+                }
               }
             }
             
@@ -419,15 +434,35 @@ const OnboardingWizardContent: React.FC = () => {
                   }
                   setMediaLoaded(true);
                   
-                  // Cache media data in localStorage for instant loading on refresh
+                  // Cache media metadata only (not full files) for instant loading on refresh
                   if (loadedData.step6 || loadedData.step9?.photos) {
                     try {
                       const mediaCache = {
-                        documents: loadedData.step6 || [],
-                        photos: loadedData.step9?.photos || [],
+                        documents: Array.isArray(loadedData.step6) ? loadedData.step6.map(doc => ({
+                          fileName: doc.fileName,
+                          fileUrl: doc.fileUrl,
+                          category: doc.category,
+                          uploadDate: doc.uploadDate
+                          // Exclude file data to reduce size
+                        })) : [],
+                        photos: Array.isArray(loadedData.step9?.photos) ? loadedData.step9.photos.map(photo => ({
+                          fileName: photo.fileName,
+                          fileUrl: photo.fileUrl,
+                          thumbnailUrl: photo.thumbnailUrl,
+                          category: photo.category,
+                          caption: photo.caption
+                          // Exclude file data to reduce size
+                        })) : [],
                         timestamp: Date.now()
                       };
-                      localStorage.setItem(`onboarding_media_${storedVillaId}`, JSON.stringify(mediaCache));
+                      
+                      // Check cache size before storing
+                      const cacheString = JSON.stringify(mediaCache);
+                      if (cacheString.length < 50000) { // 50KB limit for media cache
+                        localStorage.setItem(`onboarding_media_${storedVillaId}`, cacheString);
+                      } else {
+                        console.warn('[CACHE] Media cache too large, skipping localStorage storage');
+                      }
                     } catch (e) {
                       console.warn('[CACHE] Failed to cache media:', e);
                     }
@@ -565,15 +600,38 @@ const OnboardingWizardContent: React.FC = () => {
             })
           : [];
         
-        // Further compress by removing large base64 data from localStorage
+        // Further compress by removing large base64 data and keeping only essential fields
         const compressedFacilities = significantFacilities.map((f: any) => {
-          const compressed = { ...f };
-          // Remove base64 photo data (too large for localStorage)
-          if (compressed.photoData && compressed.photoData.startsWith('data:')) {
-            compressed.photoData = null; // Keep other photo metadata
-            compressed._hasPhoto = true; // Flag that photo exists
-          }
-          return compressed;
+          return {
+            // Essential identification fields
+            category: f.category,
+            subcategory: f.subcategory,
+            itemName: f.itemName,
+            name: f.name,
+            id: f.id,
+            
+            // State fields
+            available: f.available,
+            isAvailable: f.isAvailable,
+            quantity: f.quantity,
+            condition: f.condition,
+            
+            // User data fields
+            notes: f.notes,
+            specifications: f.specifications,
+            itemNotes: f.itemNotes,
+            productLink: f.productLink,
+            
+            // Photo references (no base64 data)
+            photoUrl: f.photoUrl,
+            sharePointUrl: f.sharePointUrl,
+            photoMimeType: f.photoMimeType,
+            photoSize: f.photoSize,
+            _hasPhoto: !!(f.photoData && f.photoData.startsWith('data:')),
+            
+            // Exclude photoData to save space
+            photoData: null
+          };
         });
         
         dataToSave = {
@@ -829,12 +887,23 @@ const OnboardingWizardContent: React.FC = () => {
             const authenticatedApi = new ClientApiClient();
             authenticatedApi.setToken(token);
             
+            // For steps with refs that have getData, get the latest data
+            let dataToSave = currentStepData;
+            if (stepRef && typeof stepRef.getData === 'function') {
+              const latestData = stepRef.getData();
+              if (latestData) {
+                dataToSave = latestData;
+                console.log(`[SAVE] Using latest data from step ${currentStep} ref:`, dataToSave);
+              }
+            }
+            
             // Map the data and save it as completed (not auto-save)
-            const mappedData = mapOnboardingDataToBackend(currentStep, currentStepData);
+            const mappedData = mapOnboardingDataToBackend(currentStep, dataToSave);
             
             const response = await authenticatedApi.saveOnboardingStep(villaId!, currentStep, mappedData, false); // false = not auto-save, so completed=true
             
             if (response.success) {
+              console.log(`[SAVE] Step ${currentStep} saved successfully with data:`, mappedData);
             }
           }
         } catch (error) {

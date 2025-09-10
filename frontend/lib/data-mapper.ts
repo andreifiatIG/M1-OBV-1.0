@@ -694,12 +694,13 @@ export function mapOnboardingDataToBackend(step: number, frontendData: any) {
         // Include if available/checked
         const isAvailable = facility.available || facility.isAvailable;
         
-        // Include if has any data/modifications
+        // Include ONLY if has meaningful user modifications (strict filtering)
         const hasData = (facility.notes && facility.notes.trim().length > 0) ||
                (facility.specifications && facility.specifications.trim().length > 0) ||
+               (facility.itemNotes && facility.itemNotes.trim().length > 0) ||
                facility.photoUrl || facility.photoData ||
-               (facility.quantity && facility.quantity > 1) ||
-               (facility.condition && facility.condition !== 'good') ||
+               (facility.quantity && facility.quantity > 1) || // Back to > 1 to exclude default values
+               (facility.condition && facility.condition !== 'good' && facility.condition !== '') || // Exclude defaults
                (facility.productLink && facility.productLink.trim().length > 0);
         
         // CRITICAL: Also include if it might exist in database (was previously saved)
@@ -710,12 +711,20 @@ export function mapOnboardingDataToBackend(step: number, frontendData: any) {
         
         // Debug logging for first few facilities to understand filtering
         if (facilitiesInput.indexOf(facility) < 5) {
-          console.log(`🏭 [MAPPER] Facility "${facility.itemName}" relevance check:`, {
+          console.log(`🏭 [MAPPER] Facility "${facility.itemName || facility.name}" relevance check:`, {
             available: isAvailable,
             hasData: hasData,
             mightExistInDB: mightExistInDB,
             facilityId: facility.id,
-            isRelevant: isRelevant
+            isRelevant: isRelevant,
+            dataDetails: {
+              hasNotes: !!(facility.notes && facility.notes.trim().length > 0),
+              hasSpecs: !!(facility.specifications && facility.specifications.trim().length > 0),
+              hasItemNotes: !!(facility.itemNotes && facility.itemNotes.trim().length > 0),
+              hasPhoto: !!(facility.photoUrl || facility.photoData),
+              quantity: facility.quantity,
+              condition: facility.condition
+            }
           });
         }
         

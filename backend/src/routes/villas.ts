@@ -3,12 +3,17 @@ import { z } from 'zod';
 import villaService from '../services/villaService';
 import { simpleClerkAuth } from '../middleware/simpleClerkAuth';
 import { validateRequest } from '../middleware/validation';
-import { VillaStatus } from '@prisma/client';
+import { PrismaClient, VillaStatus } from '@prisma/client';
+import { BankDetailsService } from '../services/bankDetailsService';
 
 const router = Router();
 
 // Apply simple auth middleware to all routes for development
 const authenticate = simpleClerkAuth;
+
+// Local services/clients
+const prisma = new PrismaClient();
+const bankDetailsService = new BankDetailsService();
 
 // Simple authorization middleware
 const authorize = (roles: string[]) => {
@@ -391,7 +396,7 @@ router.post(
 
 /**
  * @route   PUT /api/villas/:id/bank-details
- * @desc    Update villa bank details
+ * @desc    Create or update villa bank details (maps frontend fields to schema)
  * @access  Private
  */
 router.put(
@@ -399,27 +404,49 @@ router.put(
   authenticate,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      // Delegate to bank service
-      const response = await fetch(`${process.env.INTERNAL_API_URL || 'http://localhost:4001'}/api/bank/villa/${req.params.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': req.headers.authorization || ''
-        },
-        body: JSON.stringify(req.body)
-      });
-      
-      const data = await response.json();
-      
-      if (!response.ok) {
-        return res.status(response.status).json(data);
+      const villaId = req.params.id;
+
+      // Map various possible frontend field names to DB schema
+      const payload = req.body || {};
+      const mapped: any = {
+        villaId,
+        accountHolderName: payload.accountHolderName || payload.accountName || payload.account_holder_name,
+        bankName: payload.bankName || payload.bank_name,
+        accountNumber: payload.accountNumber || payload.bankAccountNumber || payload.maskedAccountNumber || payload.account_number,
+        iban: payload.iban,
+        swiftCode: payload.swiftCode || payload.swiftBicCode || payload.swift,
+        branchCode: payload.branchCode,
+        currency: payload.currency,
+        bankAddress: payload.bankAddress,
+        bankCountry: payload.bankCountry,
+      };
+
+      // Optional extras in schema
+      if (payload.branchName || payload.bankBranch) mapped.branchName = payload.branchName || payload.bankBranch;
+      if (payload.accountType) mapped.accountType = payload.accountType;
+      if (payload.notes) mapped.notes = payload.notes;
+
+      // Determine if bank details exist for this villa
+      const existing = await bankDetailsService.getBankDetailsByVillaId(villaId);
+
+      let result;
+      if (existing && existing.id) {
+        // Update existing bank details
+        // Do not pass villaId on update
+        const { villaId: _omit, ...updateData } = mapped;
+        result = await bankDetailsService.updateBankDetails(existing.id, updateData);
+      } else {
+        // Require minimal fields for creation
+        if (!mapped.accountHolderName || !mapped.bankName || !mapped.accountNumber) {
+          return res.status(400).json({
+            success: false,
+            error: 'accountHolderName, bankName and accountNumber are required to create bank details',
+          });
+        }
+        result = await bankDetailsService.createBankDetails(mapped);
       }
-      
-      res.json({
-        success: true,
-        data: data.data,
-        message: 'Bank details updated successfully'
-      });
+
+      res.json({ success: true, data: result, message: 'Bank details saved successfully' });
     } catch (error) {
       next(error);
     }
@@ -428,7 +455,7 @@ router.put(
 
 /**
  * @route   PUT /api/villas/:id/contractual-details
- * @desc    Update villa contractual details
+ * @desc    Upsert villa contractual details (maps frontend fields to ContractualDetails schema)
  * @access  Private
  */
 router.put(
@@ -436,23 +463,49 @@ router.put(
   authenticate,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      // Update villa with contractual details
-      const contractualData = {
-        contractType: req.body.contractType,
-        commissionRate: req.body.commissionRate,
-        managementFee: req.body.managementFee,
-        paymentSchedule: req.body.paymentSchedule,
-        cancellationPolicy: req.body.cancellationPolicy,
-        ...req.body
+      const villaId = req.params.id;
+      const body = req.body || {};
+
+      const mapped: any = {
+        contractStartDate: body.contractStartDate || body.contractSignatureDate || body.contract_start_date,
+        contractEndDate: body.contractEndDate || body.contractRenewalDate || body.contract_end_date,
+        contractType: body.contractType,
+        commissionRate: body.commissionRate ?? body.serviceCharge ?? body.serviceChargePercentage,
+        managementFee: body.managementFee,
+        marketingFee: body.marketingFee,
+        paymentTerms: body.paymentTerms,
+        paymentSchedule: body.paymentSchedule,
+        minimumStayNights: body.minimumStayNights,
+        cancellationPolicy: body.cancellationPolicy,
+        checkInTime: body.checkInTime,
+        checkOutTime: body.checkOutTime,
+        insuranceProvider: body.insuranceProvider,
+        insurancePolicyNumber: body.insurancePolicyNumber,
+        insuranceExpiry: body.insuranceExpiry ? new Date(body.insuranceExpiry) : undefined,
+        specialTerms: body.specialTerms,
+        payoutDay1: body.payoutDay1 ? Number(body.payoutDay1) : undefined,
+        payoutDay2: body.payoutDay2 ? Number(body.payoutDay2) : undefined,
+        dbdNumber: body.dbdNumber,
+        vatPaymentTerms: body.vatPaymentTerms || body.vatTerms,
+        vatRegistrationNumber: body.vatRegistrationNumber || body.vatNumber,
+        paymentThroughIPL: body.paymentThroughIPL,
       };
-      
-      const villa = await villaService.updateVilla(req.params.id, contractualData);
-      
-      res.json({
-        success: true,
-        data: villa,
-        message: 'Contractual details updated successfully'
-      });
+
+      // Clean undefined to avoid Prisma complaining about type mismatches
+      Object.keys(mapped).forEach((k) => mapped[k] === undefined && delete mapped[k]);
+
+      const existing = await prisma.contractualDetails.findUnique({ where: { villaId } });
+      let result;
+      if (existing) {
+        result = await prisma.contractualDetails.update({ where: { villaId }, data: mapped });
+      } else {
+        if (!mapped.contractStartDate || !mapped.contractType || mapped.commissionRate === undefined) {
+          return res.status(400).json({ success: false, error: 'contractStartDate, contractType and commissionRate are required to create contractual details' });
+        }
+        result = await prisma.contractualDetails.create({ data: { villaId, ...mapped } });
+      }
+
+      res.json({ success: true, data: result, message: 'Contractual details saved successfully' });
     } catch (error) {
       next(error);
     }
@@ -611,7 +664,7 @@ router.put(
 
 /**
  * @route   PUT /api/villas/:id/owner-details
- * @desc    Update villa owner details
+ * @desc    Update or create villa owner details
  * @access  Private
  */
 router.put(
@@ -621,35 +674,53 @@ router.put(
     try {
       // Get villa to find owner
       const villa = await villaService.getVillaById(req.params.id);
-      const ownerId = (villa as any).ownerId;
+      const owner = (villa as any).owner;
       
-      if (!ownerId) {
-        return res.status(400).json({
-          success: false,
-          error: 'Villa has no associated owner'
+      let response;
+      if (owner?.id) {
+        // Update existing owner
+        response = await fetch(`${process.env.INTERNAL_API_URL || 'http://localhost:4001'}/api/owners/${owner.id}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': req.headers.authorization || ''
+          },
+          body: JSON.stringify(req.body)
+        });
+      } else {
+        // Create a new owner for this villa
+        const createPayload = {
+          villaId: req.params.id,
+          // Fallback minimal required fields; expect frontend to send full payload
+          firstName: req.body.firstName || 'Owner',
+          lastName: req.body.lastName || 'Unknown',
+          email: req.body.email || `owner-${req.params.id}@example.com`,
+          phone: req.body.phone || 'N/A',
+          address: req.body.address || villa.address,
+          city: req.body.city || villa.city,
+          country: req.body.country || villa.country,
+          zipCode: req.body.zipCode || villa.zipCode,
+          ...req.body,
+        };
+        response = await fetch(`${process.env.INTERNAL_API_URL || 'http://localhost:4001'}/api/owners`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': req.headers.authorization || ''
+          },
+          body: JSON.stringify(createPayload)
         });
       }
       
-      // Delegate to owners service
-      const response = await fetch(`${process.env.INTERNAL_API_URL || 'http://localhost:4001'}/api/owners/${ownerId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': req.headers.authorization || ''
-        },
-        body: JSON.stringify(req.body)
-      });
-      
       const data = await response.json();
-      
       if (!response.ok) {
         return res.status(response.status).json(data);
       }
       
       res.json({
         success: true,
-        data: data.data,
-        message: 'Owner details updated successfully'
+        data: data.data || data,
+        message: 'Owner details saved successfully'
       });
     } catch (error) {
       next(error);

@@ -84,10 +84,14 @@ app.use(timeoutHandler(30000));
 // Rate limiting
 const limiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000'),
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100'),
+  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '500'), // Increased for development
   message: 'Too many requests from this IP, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
+  // Skip rate limiting in development mode
+  skip: (req) => {
+    return process.env.NODE_ENV !== 'production';
+  }
 });
 
 app.use('/api/', limiter);

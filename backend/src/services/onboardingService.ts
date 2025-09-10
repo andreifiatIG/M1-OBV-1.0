@@ -396,17 +396,33 @@ class OnboardingService {
         });
       }
 
-      // Calculate completion percentage
-      const completedStepsCount = this.countCompletedSteps(progress);
-      const completedStepsArray = this.getCompletedStepsArray(progress);
-      const completionPercentage = Math.round((completedStepsCount / this.TOTAL_STEPS) * 100);
+      // Calculate completion percentage using both legacy and data-based methods
+      const legacyCompletedStepsCount = this.countCompletedSteps(progress);
+      const legacyCompletedStepsArray = this.getCompletedStepsArray(progress);
+      const legacyCompletionPercentage = Math.round((legacyCompletedStepsCount / this.TOTAL_STEPS) * 100);
       
-      logger.info(`Villa ${villaId} progress calculation:`, {
-        completedStepsCount,
+      // NEW: Data-based completion calculation
+      const dataBasedCompletion = await this.calculateDataBasedCompletion(progress);
+      
+      // Bridge enhanced and legacy systems: sync boolean flags with data-based completion
+      await this.syncLegacyProgressFlags(villaId, dataBasedCompletion.stepCompletionDetails);
+      
+      // Use data-based calculation as primary, legacy as fallback
+      const completedStepsCount = dataBasedCompletion.completedSteps;
+      const completionPercentage = dataBasedCompletion.overallProgress;
+      const completedStepsArray = Object.entries(dataBasedCompletion.stepCompletionDetails)
+        .filter(([_, details]) => details.isComplete)
+        .map(([step, _]) => parseInt(step));
+      
+      logger.info(`Villa ${villaId} progress calculation (ENHANCED):`, {
+        legacyCompletedSteps: legacyCompletedStepsCount,
+        legacyCompletionPercentage,
+        dataBasedCompletedSteps: completedStepsCount,
+        dataBasedCompletionPercentage: completionPercentage,
         totalSteps: this.TOTAL_STEPS,
-        completionPercentage,
         completedSteps: completedStepsArray,
-        currentStep: progress.currentStep
+        currentStep: progress.currentStep,
+        stepBreakdown: dataBasedCompletion.stepCompletionDetails
       });
 
       // Get validation for current step
@@ -470,6 +486,13 @@ class OnboardingService {
         currentStepValidation: validation,
         stepDetails: this.getStepDetails(progress),
         fieldProgress, // Include all field progress for reference
+        // NEW: Enhanced step-by-step progress details
+        stepCompletionDetails: dataBasedCompletion.stepCompletionDetails,
+        legacyProgress: {
+          completedSteps: legacyCompletedStepsCount,
+          completionPercentage: legacyCompletionPercentage,
+          completedStepsArray: legacyCompletedStepsArray
+        }
       };
 
       // 🔍 STAFF DEBUG: Final result being returned
@@ -536,7 +559,7 @@ class OnboardingService {
       }
 
       // Update the specific step data
-      await this.saveStepData(villaId, step, data);
+      await this.saveStepData(villaId, step, data, userId);
 
       // Update enhanced progress tracking
       if (userId) {
@@ -758,7 +781,7 @@ if (completedStepsCount === this.TOTAL_STEPS) {
   /**
    * Save step-specific data
    */
-  private async saveStepData(villaId: string, step: number, data: any) {
+  private async saveStepData(villaId: string, step: number, data: any, userId?: string) {
     logger.info(`Saving step ${step} data for villa ${villaId}:`, {
       stepName: this.STEP_NAMES[step as keyof typeof this.STEP_NAMES],
       dataKeys: Object.keys(data || {}),
@@ -1553,6 +1576,9 @@ if (completedStepsCount === this.TOTAL_STEPS) {
                   continue;
                 }
 
+                // DEBUG: Force tsx recompilation - NEW VERSION
+                logger.info(`🏭 [FACILITY] CRITICAL DEBUG v2 - Processing facility ${itemName}, userId: "${userId || 'undefined'}", type: ${typeof userId}`);
+
                 // Prepare facility data with enhanced validation and photo handling
                 const facilityData: any = {
                   villaId,
@@ -1566,7 +1592,7 @@ if (completedStepsCount === this.TOTAL_STEPS) {
                   specifications: facility.specifications ? (facility.specifications || '').substring(0, 5000) : null,
                   photoUrl: facility.photoUrl ? facility.photoUrl.substring(0, 500) : null,
                   productLink: facility.productLink ? facility.productLink.substring(0, 500) : null,
-                  checkedBy: facility.checkedBy ? facility.checkedBy.substring(0, 100) : (userId || 'system'), // Fixed userId undefined issue
+                  checkedBy: facility.checkedBy ? facility.checkedBy.substring(0, 100) : (userId ? userId.substring(0, 100) : 'system'), // ROBUST FIX: Handle undefined userId
                   lastCheckedAt: facility.lastCheckedAt ? new Date(facility.lastCheckedAt) : new Date(),
                 };
 
@@ -2026,6 +2052,174 @@ async rejectOnboarding(_villaId: string, _rejectedBy: string, _reason: string) {
     });
     
     return count;
+  }
+
+  /**
+   * Enhanced progress calculation based on actual data completion
+   * This method checks if step data actually exists and is meaningful
+   */
+  private async calculateDataBasedCompletion(progress: any): Promise<{
+    completedSteps: number;
+    stepCompletionDetails: Record<number, { isComplete: boolean; reason: string; requiredFields: string[]; completedFields: string[] }>;
+    overallProgress: number;
+  }> {
+    const villa = progress.villa;
+    const stepCompletionDetails: Record<number, { isComplete: boolean; reason: string; requiredFields: string[]; completedFields: string[] }> = {};
+    
+    // Step 1: Villa Info
+    const step1Required = ['villaName', 'location', 'address', 'city', 'country', 'bedrooms', 'bathrooms', 'maxGuests', 'propertyType'];
+    const step1Completed = step1Required.filter(field => villa?.[field] && villa[field] !== '');
+    stepCompletionDetails[1] = {
+      isComplete: step1Completed.length === step1Required.length,
+      reason: `${step1Completed.length}/${step1Required.length} required fields completed`,
+      requiredFields: step1Required,
+      completedFields: step1Completed
+    };
+
+    // Step 2: Owner Details
+    const step2Required = ['firstName', 'lastName', 'email'];
+    const step2Completed = step2Required.filter(field => villa?.owner?.[field] && villa.owner[field] !== '');
+    stepCompletionDetails[2] = {
+      isComplete: step2Completed.length === step2Required.length && !!villa?.owner,
+      reason: villa?.owner ? `${step2Completed.length}/${step2Required.length} required fields completed` : 'No owner details',
+      requiredFields: step2Required,
+      completedFields: step2Completed
+    };
+
+    // Step 3: Contractual Details - Only contract type required, dates can be optional
+    const step3Required = ['contractType'];
+    const step3Completed = step3Required.filter(field => villa?.contractualDetails?.[field]);
+    stepCompletionDetails[3] = {
+      isComplete: step3Completed.length === step3Required.length && !!villa?.contractualDetails,
+      reason: villa?.contractualDetails ? `Contract type specified: ${villa.contractualDetails.contractType}` : 'No contractual details',
+      requiredFields: step3Required,
+      completedFields: step3Completed
+    };
+
+    // Step 4: Bank Details - Only bank name and account number required, routing can be optional  
+    const step4Required = ['bankName', 'accountNumber'];
+    const step4Completed = step4Required.filter(field => villa?.bankDetails?.[field] && villa.bankDetails[field] !== '');
+    stepCompletionDetails[4] = {
+      isComplete: step4Completed.length === step4Required.length && !!villa?.bankDetails,
+      reason: villa?.bankDetails ? `${step4Completed.length}/${step4Required.length} required fields completed` : 'No bank details',
+      requiredFields: step4Required,
+      completedFields: step4Completed
+    };
+
+    // Step 5: OTA Credentials
+    const otaCredentialsCount = villa?.otaCredentials?.length || 0;
+    stepCompletionDetails[5] = {
+      isComplete: otaCredentialsCount >= 1, // At least one OTA platform configured
+      reason: `${otaCredentialsCount} OTA platform(s) configured`,
+      requiredFields: ['At least 1 OTA platform'],
+      completedFields: otaCredentialsCount > 0 ? [`${otaCredentialsCount} platforms`] : []
+    };
+
+    // Step 6: Documents - More lenient: at least 1 document or allow skip for now
+    const documentsCount = villa?.documents?.filter((doc: any) => doc.isActive)?.length || 0;
+    stepCompletionDetails[6] = {
+      isComplete: documentsCount >= 1, // At least 1 document required (more realistic)
+      reason: `${documentsCount} document(s) uploaded`,
+      requiredFields: ['At least 1 document'],
+      completedFields: documentsCount >= 1 ? [`${documentsCount} documents`] : []
+    };
+
+    // Step 7: Staff Configuration
+    const staffCount = villa?.staff?.filter((staff: any) => staff.isActive)?.length || 0;
+    stepCompletionDetails[7] = {
+      isComplete: staffCount >= 1, // At least one staff member
+      reason: `${staffCount} staff member(s) configured`,
+      requiredFields: ['At least 1 staff member'],
+      completedFields: staffCount > 0 ? [`${staffCount} staff members`] : []
+    };
+
+    // Step 8: Facilities - More realistic: at least 1 facility configured  
+    const facilitiesCount = villa?.facilities?.filter((facility: any) => facility.isAvailable)?.length || 0;
+    stepCompletionDetails[8] = {
+      isComplete: facilitiesCount >= 1, // At least 1 facility configured (more realistic)
+      reason: `${facilitiesCount} facilit(y/ies) configured`,
+      requiredFields: ['At least 1 facility'],
+      completedFields: facilitiesCount >= 1 ? [`${facilitiesCount} facilities`] : []
+    };
+
+    // Step 9: Photos - More realistic: at least 1 photo uploaded
+    const photosCount = villa?.photos?.length || 0;
+    stepCompletionDetails[9] = {
+      isComplete: photosCount >= 1, // At least 1 photo uploaded (more realistic)
+      reason: `${photosCount} photo(s) uploaded`,
+      requiredFields: ['At least 1 photo'],
+      completedFields: photosCount >= 1 ? [`${photosCount} photos`] : []
+    };
+
+    // Step 10: Review
+    stepCompletionDetails[10] = {
+      isComplete: progress.reviewCompleted === true,
+      reason: progress.reviewCompleted ? 'Review completed by owner' : 'Pending owner review',
+      requiredFields: ['Owner review completion'],
+      completedFields: progress.reviewCompleted ? ['Review completed'] : []
+    };
+
+    // Count completed steps
+    const completedSteps = Object.values(stepCompletionDetails).filter(detail => detail.isComplete).length;
+    const overallProgress = Math.round((completedSteps / this.TOTAL_STEPS) * 100);
+
+    logger.info(`Data-based completion analysis for villa ${progress.villaId}:`, {
+      completedSteps,
+      totalSteps: this.TOTAL_STEPS,
+      overallProgress,
+      stepBreakdown: Object.entries(stepCompletionDetails).map(([step, details]) => ({
+        step: parseInt(step),
+        complete: details.isComplete,
+        reason: details.reason
+      }))
+    });
+
+    return {
+      completedSteps,
+      stepCompletionDetails,
+      overallProgress
+    };
+  }
+
+  /**
+   * Sync legacy progress flags with data-based completion
+   * This bridges the gap between enhanced tracking and legacy boolean flags
+   */
+  private async syncLegacyProgressFlags(villaId: string, stepCompletionDetails: Record<number, { isComplete: boolean; reason: string; requiredFields: string[]; completedFields: string[] }>) {
+    try {
+      const updateData: any = {};
+      
+      // Map data-based completion to legacy boolean flags
+      if (stepCompletionDetails[1]?.isComplete) updateData.villaInfoCompleted = true;
+      if (stepCompletionDetails[2]?.isComplete) updateData.ownerDetailsCompleted = true;
+      if (stepCompletionDetails[3]?.isComplete) updateData.contractualDetailsCompleted = true;
+      if (stepCompletionDetails[4]?.isComplete) updateData.bankDetailsCompleted = true;
+      if (stepCompletionDetails[5]?.isComplete) updateData.otaCredentialsCompleted = true;
+      if (stepCompletionDetails[6]?.isComplete) updateData.documentsUploaded = true;
+      if (stepCompletionDetails[7]?.isComplete) updateData.staffConfigCompleted = true;
+      if (stepCompletionDetails[8]?.isComplete) updateData.facilitiesCompleted = true;
+      if (stepCompletionDetails[9]?.isComplete) updateData.photosUploaded = true;
+      if (stepCompletionDetails[10]?.isComplete) updateData.reviewCompleted = true;
+
+      // Only update if there are changes to make
+      if (Object.keys(updateData).length > 0) {
+        await prisma.onboardingProgress.update({
+          where: { villaId },
+          data: updateData
+        });
+        
+        logger.info(`Synced legacy progress flags for villa ${villaId}:`, {
+          updatedFlags: Object.keys(updateData),
+          flagValues: updateData
+        });
+      }
+      
+      return updateData;
+    } catch (error) {
+      logger.error(`Error syncing legacy progress flags for villa ${villaId}:`, error);
+      // Don't throw - this is a sync operation that shouldn't break the main flow
+      return {};
+    }
   }
 
   /**

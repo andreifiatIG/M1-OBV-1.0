@@ -13,15 +13,15 @@ export default function BankDetailsSection({ bankDetails, villaId }: BankDetails
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({
     // Account Information (3 fields)
-    accountName: bankDetails?.accountName || '',
+    accountName: bankDetails?.accountHolderName || bankDetails?.accountName || '',
     bankName: bankDetails?.bankName || '',
-    swiftBicCode: bankDetails?.swiftBicCode || '',
+    swiftBicCode: bankDetails?.swiftCode || bankDetails?.swiftBicCode || '',
     
     // Sensitive Information (1 field - masked)
-    maskedAccountNumber: bankDetails?.maskedAccountNumber || '',
+    maskedAccountNumber: bankDetails?.maskedAccountNumber || bankDetails?.accountNumber || '',
     
     // Bank Location (2 fields)
-    bankBranch: bankDetails?.bankBranch || '',
+    bankBranch: bankDetails?.branchName || bankDetails?.bankBranch || '',
     bankAddress: bankDetails?.bankAddress || '',
     
     // Security Acknowledgment (1 field)
@@ -188,10 +188,11 @@ export default function BankDetailsSection({ bankDetails, villaId }: BankDetails
                   </div>
                 ) : (
                   <p className="text-gray-900 font-mono">
-                    {bankDetails?.maskedAccountNumber 
+                    {bankDetails?.maskedAccountNumber
                       ? maskAccountNumber(bankDetails.maskedAccountNumber)
-                      : 'Not provided'
-                    }
+                      : bankDetails?.accountNumber
+                      ? maskAccountNumber(bankDetails.accountNumber)
+                      : 'Not provided'}
                   </p>
                 )}
               </div>

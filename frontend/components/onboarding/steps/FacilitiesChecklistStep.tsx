@@ -113,7 +113,25 @@ const FacilitiesChecklistStep = React.memo(forwardRef<StepHandle, FacilitiesChec
               console.debug(`🏭 [FACILITIES-UI] Matched facility: "${savedFacility.itemName}" in ${categoryId}`);
             } else {
               unmatchedCount++;
-              console.warn(`🏭 [FACILITIES-UI] Unmatched facility: "${savedFacility.itemName}" in category "${categoryId}"`);
+              console.warn(`🏭 [FACILITIES-UI] Unmatched facility: "${savedFacility.itemName}" in category "${categoryId}" - facility exists in database but not in predefined categories`);
+              
+              // Gracefully handle unmatched facilities by creating a temporary item
+              // This prevents crashes when database has facilities not in the predefined list
+              const temporaryItem = facilitiesData[categoryId as keyof typeof facilitiesData]?.items.find(item => 
+                item.name.toLowerCase().includes(savedFacility.itemName.toLowerCase().split(' ')[0])
+              );
+              
+              if (temporaryItem) {
+                // Update a similar existing item instead of creating orphans
+                temporaryItem.available = savedFacility.isAvailable;
+                temporaryItem.notes = savedFacility.notes || '';
+                temporaryItem.specifications = savedFacility.specifications || '';
+                temporaryItem.quantity = savedFacility.quantity || 1;
+                temporaryItem.condition = savedFacility.condition || 'good';
+                temporaryItem.photoUrl = savedFacility.photoUrl || '';
+                temporaryItem.productLink = savedFacility.productLink || '';
+                console.info(`🏭 [FACILITIES-UI] Mapped unmatched facility "${savedFacility.itemName}" to similar item "${temporaryItem.name}"`);
+              }
             }
           });
 
@@ -130,7 +148,7 @@ const FacilitiesChecklistStep = React.memo(forwardRef<StepHandle, FacilitiesChec
       const performanceEnd = Date.now();
       const processingTime = performanceEnd - performanceStart;
       
-      console.log('🏭 [FACILITIES-UI] Processing completed:', {
+      console.log('[FACILITIES-UI] Processing completed:', {
         totalFacilities: facilitiesInput.length,
         processed: processedCount,
         matched: matchedCount,
@@ -140,13 +158,13 @@ const FacilitiesChecklistStep = React.memo(forwardRef<StepHandle, FacilitiesChec
       });
       
       if (processingTime > 100) {
-        console.warn(`🏭 [FACILITIES-UI] Slow processing detected: ${processingTime}ms for ${facilitiesInput.length} facilities`);
+        console.warn(`[FACILITIES-UI] Slow processing detected: ${processingTime}ms for ${facilitiesInput.length} facilities`);
       }
     } else {
-      console.log('🏭 [FACILITIES-UI] No facilities data to process, using base categories');
+      console.log('[FACILITIES-UI] No facilities data to process, using base categories');
     }
 
-    console.log('🏭 [FACILITIES-UI] State initialization completed');
+    console.log('[FACILITIES-UI] State initialization completed');
     return initialData;
   });
 

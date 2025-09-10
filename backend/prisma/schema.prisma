@@ -243,6 +243,7 @@ model Photo {
   updatedAt        DateTime      @updatedAt
   sharePointFileId String?
   sharePointPath   String?
+  sharePointUrl    String?       // Direct SharePoint URL for frontend display
   // Database file storage
   fileContent      Bytes?        // Original file content
   thumbnailContent Bytes?        // Compressed thumbnail

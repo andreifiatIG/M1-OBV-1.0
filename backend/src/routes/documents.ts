@@ -1031,7 +1031,27 @@ router.get('/sharepoint/:villaId', authMiddleware, async (req: Request, res: Res
       });
       
       const sharePointPath = villa?.sharePointPath || `/Villas/${villa?.villaName}_${villa?.villaCode}`;
-      const folderContents = await sharePointService.listFiles(`${sharePointPath}/Documents`);
+      
+      // Get contents from multiple document folders
+      const documentFolders = [
+        '01-Legal-Documents',
+        '02-Financial-Documents', 
+        '03-Operational-Documents',
+        '04-Contracts-Agreements',
+        '05-Maintenance-Records'
+      ];
+      
+      let folderContents = { value: [] };
+      for (const folder of documentFolders) {
+        try {
+          const contents = await sharePointService.listFiles(`${sharePointPath}/${folder}`);
+          if (contents.value) {
+            folderContents.value.push(...contents.value);
+          }
+        } catch (error) {
+          logger.warn(`Could not list files in ${folder}:`, error);
+        }
+      }
       
       res.json({
         documents,

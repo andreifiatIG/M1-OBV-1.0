@@ -535,15 +535,13 @@ const PhotoUploadStep = forwardRef<StepHandle, PhotoUploadStepProps>((
         file: null, // File already uploaded, don't store locally
         category: selectedCategory,
         subfolder: selectedSubfolder || undefined,
-        preview: photo.fileUrl && photo.fileUrl.includes('/api/files/') 
-          ? `${photo.fileUrl}?t=${Date.now()}`
-          : `${API_URL}/api/photos/public/${photo.id}?t=${Date.now()}`, // Use database endpoint first, fallback to public
+        preview: `${API_URL}/api/photos/public/${photo.id}?t=${Date.now()}`, // Use public endpoint for image tags (no auth required)
         uploaded: true,
         sharePointId: photo.sharePointFileId,
         sharePointPath: photo.sharePointPath,
         fileName: photo.fileName,
         fileUrl: photo.fileUrl,
-        thumbnailUrl: `${API_URL}/api/photos/public/${photo.id}`, // Use public endpoint for thumbnail
+        thumbnailUrl: `${API_URL}/api/photos/serve/${photo.id}?thumbnail=true&t=${Date.now()}`, // Use serve endpoint for thumbnail with timestamp
       }));
 
       const updatedPhotos = [...photos, ...newPhotos];
@@ -760,9 +758,14 @@ const PhotoUploadStep = forwardRef<StepHandle, PhotoUploadStepProps>((
   };
 
   const validateForm = () => {
-    // Basic validation: ensure at least one photo has been uploaded.
-    // More complex validation can be added as needed.
-    return photos.length > 0;
+    // Validation: ensure at least 3 photos have been uploaded for better listing visibility
+    const minPhotosRequired = 3;
+    if (photos.length < minPhotosRequired) {
+      setError(`Please upload at least ${minPhotosRequired} photos for better villa visibility`);
+      return false;
+    }
+    setError(null);
+    return true;
   };
   
   useImperativeHandle(ref, () => ({
@@ -864,22 +867,17 @@ const PhotoUploadStep = forwardRef<StepHandle, PhotoUploadStepProps>((
                       if (!target.src.includes('data:image/svg')) {
                         console.warn('Failed to load image:', target.src);
                         
-                        // Try different endpoints in order: database -> public -> serve -> placeholder
-                        const databaseUrl = `${API_URL}/api/files/photos/${photo.id}?t=${Date.now()}`;
+                        // Try different endpoints in order: public -> serve -> placeholder (skip auth endpoints)
                         const publicUrl = `${API_URL}/api/photos/public/${photo.id}?t=${Date.now()}`;
                         const serveUrl = `${API_URL}/api/photos/serve/${photo.id}?t=${Date.now()}`;
                         
-                        if (target.src.includes('/api/files/')) {
-                          // Database URL failed, try public URL
-                          console.log('Database URL failed, trying public URL');
-                          target.src = publicUrl;
-                        } else if (target.src.includes('/api/photos/public/')) {
+                        if (target.src.includes('/api/photos/public/')) {
                           // Public URL failed, try serve URL
                           console.log('Public URL failed, trying serve URL');
                           target.src = serveUrl;
                         } else if (target.src.includes('/api/photos/serve/')) {
                           // Serve URL failed, use placeholder
-                          console.log('All URLs failed, using placeholder');
+                          console.log('All public URLs failed, using placeholder');
                           const svgPlaceholder = 'data:image/svg+xml,' + encodeURIComponent(`
                             <svg width="150" height="150" xmlns="http://www.w3.org/2000/svg">
                               <rect width="150" height="150" fill="#f1f5f9"/>
@@ -890,9 +888,9 @@ const PhotoUploadStep = forwardRef<StepHandle, PhotoUploadStepProps>((
                           `);
                           target.src = svgPlaceholder;
                         } else {
-                          // First failure, try database URL
-                          console.log('First failure, trying database URL');
-                          target.src = databaseUrl;
+                          // First failure from any source, try public URL
+                          console.log('Image loading failed, trying public URL');
+                          target.src = publicUrl;
                         }
                       }
                     }}

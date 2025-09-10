@@ -8,6 +8,7 @@ import { z } from 'zod';
 import path from 'path';
 import fs from 'fs';
 import sharePointService from '../services/sharePointService';
+import databaseFileStorageService from '../services/databaseFileStorageService';
 import multer from 'multer';
 import { fileUploadRateLimit, onboardingReadRateLimit } from '../middleware/rateLimiting';
 
@@ -268,7 +269,7 @@ router.get('/public/:photoId', async (req: Request, res: Response) => {
   }
 });
 
-// GET /api/photos/serve/:photoId - Serve photo by database ID (supports SharePoint and local)
+// GET /api/photos/serve/:photoId - Serve photo with BYTEA database fallback like documents
 router.get('/serve/:photoId', async (req: Request, res: Response) => {
   // Set request timeout to prevent hanging
   req.setTimeout(15000, () => {
@@ -278,6 +279,7 @@ router.get('/serve/:photoId', async (req: Request, res: Response) => {
   });
   try {
     const { photoId } = req.params;
+    const thumbnail = req.query.thumbnail === 'true';
 
     // Find the photo in database
     const photo = await prisma.photo.findUnique({
@@ -287,6 +289,9 @@ router.get('/serve/:photoId', async (req: Request, res: Response) => {
         sharePointFileId: true,
         mimeType: true,
         fileUrl: true,
+        fileContent: true,
+        thumbnailContent: true,
+        storageLocation: true,
       },
     });
 
@@ -306,9 +311,32 @@ router.get('/serve/:photoId', async (req: Request, res: Response) => {
       return res.send(placeholderSvg);
     }
 
-    // Try SharePoint first if SharePoint file ID exists (with timeout)
+    // BYTEA database-first approach: Try database content first if available
+    const databaseContent = thumbnail ? photo.thumbnailContent : photo.fileContent;
+    if (databaseContent) {
+      try {
+        logger.info(`[DB-SERVE] Serving photo from database: ${photo.fileName} ${thumbnail ? '(thumbnail)' : '(full)'}`);
+        
+        res.set({
+          'Content-Type': photo.mimeType || 'image/jpeg',
+          'Cache-Control': 'public, max-age=3600', // Cache for 1 hour
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET',
+          'X-Content-Type-Options': 'nosniff',
+          'X-Storage-Source': 'database',
+        });
+        
+        return res.send(databaseContent);
+      } catch (dbError) {
+        logger.warn(`[DB-SERVE] Database content failed for ${photoId}, trying SharePoint:`, dbError);
+      }
+    }
+
+    // SharePoint fallback if SharePoint file ID exists (with timeout)
     if (photo.sharePointFileId) {
       try {
+        logger.info(`[SP-SERVE] Attempting SharePoint fallback for photo: ${photo.fileName}`);
+        
         // Create a timeout promise
         const timeoutPromise = new Promise((_, reject) => {
           setTimeout(() => reject(new Error('SharePoint download timeout')), 3000); // 3 second timeout
@@ -327,6 +355,7 @@ router.get('/serve/:photoId', async (req: Request, res: Response) => {
           'Access-Control-Allow-Origin': '*',
           'Access-Control-Allow-Methods': 'GET',
           'X-Content-Type-Options': 'nosniff',
+          'X-Storage-Source': 'sharepoint',
         });
         
         // Ensure we're sending the buffer correctly
@@ -339,38 +368,41 @@ router.get('/serve/:photoId', async (req: Request, res: Response) => {
           return res.send(Buffer.from(downloadResult.content));
         }
       } catch (sharePointError) {
-        logger.warn(`Failed to serve from SharePoint, trying local: ${photo.sharePointFileId}`, sharePointError);
+        logger.warn(`[SP-SERVE] SharePoint failed for ${photo.sharePointFileId}, trying local file:`, sharePointError);
       }
     }
 
-    // Fallback to local file if SharePoint fails or doesn't exist
+    // Local file system fallback (legacy behavior)
     const filePath = path.join(process.cwd(), 'uploads', 'photos', photo.fileName);
     
-    if (!fs.existsSync(filePath)) {
-      // Return a placeholder image for missing files
-      const placeholderSvg = `
-        <svg width="400" height="400" xmlns="http://www.w3.org/2000/svg">
-          <rect width="400" height="400" fill="#fef2f2"/>
-          <text x="200" y="200" font-family="Arial" font-size="20" text-anchor="middle" fill="#dc2626">Image Not Available</text>
-        </svg>
-      `;
+    if (fs.existsSync(filePath)) {
+      // Set appropriate headers for local file serving
       res.set({
-        'Content-Type': 'image/svg+xml',
-        'Cache-Control': 'no-cache',
+        'Content-Type': photo.mimeType || 'image/jpeg',
+        'Cache-Control': 'public, max-age=3600',
         'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET',
+        'X-Content-Type-Options': 'nosniff',
+        'X-Storage-Source': 'filesystem',
       });
-      return res.send(placeholderSvg);
+      return res.sendFile(filePath);
     }
 
-    // Set appropriate headers for local file serving
+    // All storage methods failed - return placeholder image
+    logger.warn(`[SERVE-FAIL] All storage methods failed for photo: ${photoId}`);
+    const placeholderSvg = `
+      <svg width="400" height="400" xmlns="http://www.w3.org/2000/svg">
+        <rect width="400" height="400" fill="#fef2f2"/>
+        <text x="200" y="200" font-family="Arial" font-size="20" text-anchor="middle" fill="#dc2626">Image Not Available</text>
+      </svg>
+    `;
     res.set({
-      'Content-Type': photo.mimeType || 'image/jpeg',
-      'Cache-Control': 'public, max-age=3600',
+      'Content-Type': 'image/svg+xml',
+      'Cache-Control': 'no-cache',
       'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET',
-      'X-Content-Type-Options': 'nosniff',
     });
-    return res.sendFile(filePath);
+    return res.send(placeholderSvg);
+
   } catch (error) {
     logger.error('Error serving photo:', error);
     
@@ -1000,7 +1032,7 @@ router.get('/sharepoint/:villaId', authMiddleware, async (req: Request, res: Res
       });
       
       const sharePointPath = villa?.sharePointPath || `/Villas/${villa?.villaName}_${villa?.villaCode}`;
-      const folderContents = await sharePointService.listFiles(`${sharePointPath}/Photos`);
+      const folderContents = await sharePointService.listFiles(`${sharePointPath}/06-Photos-Media`);
       
       res.json({
         photos,
@@ -1032,11 +1064,18 @@ router.post(
       const files = req.files as Express.Multer.File[];
       const { 
         villaId, 
-        facilityCategory, 
+        facilityCategory: rawFacilityCategory, 
         facilityItemName, 
         facilityItemId,
         tags = '[]' 
       } = req.body;
+
+      // Convert frontend kebab-case to database underscore format
+      const facilityCategory = rawFacilityCategory?.replace(/-/g, '_');
+      
+      if (rawFacilityCategory !== facilityCategory) {
+        logger.info(`Category format conversion: "${rawFacilityCategory}" → "${facilityCategory}"`);
+      }
 
       if (!files || files.length === 0) {
         return res.status(400).json({ error: 'No photos uploaded' });
@@ -1078,59 +1117,37 @@ router.post(
         where: { villaId, isMain: true }
       });
       
-      // Upload files to SharePoint and create database records
+      // Upload files using BYTEA database storage with SharePoint fallback 
       const uploadPromises = files.map(async (file, index) => {
         // Create facility-specific filename: {ItemName}_{Index}_{OriginalName}
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
         const fileExtension = path.extname(file.originalname);
         const facilityFileName = `${sanitizedItemName}_${index + 1}_${timestamp}${fileExtension}`;
         
-        // Create temporary file for SharePoint upload
-        const tempFilePath = path.join(process.cwd(), 'temp', facilityFileName);
-        
-        // Ensure temp directory exists
-        const tempDir = path.dirname(tempFilePath);
-        if (!fs.existsSync(tempDir)) {
-          fs.mkdirSync(tempDir, { recursive: true });
-        }
-        
-        // Write file buffer to temporary location
-        fs.writeFileSync(tempFilePath, file.buffer);
-
         try {
-          // Upload to SharePoint
-          const sharePointResult = await sharePointService.uploadFile(
-            tempFilePath,
-            villaId,
-            facilityFolder,
+          // Primary: Store in database with BYTEA compression and optimization
+          logger.info(`[FACILITY-DB] Attempting database storage for: ${facilityFileName}`);
+          
+          const databaseResult = await databaseFileStorageService.storePhoto(
+            file.buffer,
             facilityFileName,
-            file.mimetype
-          );
-
-          // Extract actual filename from SharePoint URL to handle auto-renamed duplicates
-          const actualFileName = sharePointResult.fileUrl.split('/').pop()?.split('?')[0] || sharePointResult.fileName;
-          const decodedFileName = decodeURIComponent(actualFileName);
-
-          // Create photo record in database
-          const photo = await prisma.photo.create({
-            data: {
-              villaId,
-              category: 'AMENITIES_FACILITIES', // Use existing category for facilities
-              fileName: decodedFileName,
-              fileUrl: sharePointResult.fileUrl,
-              fileSize: sharePointResult.size,
-              mimeType: file.mimetype,
-              tags: facilityTags,
-              sortOrder: index,
+            file.mimetype,
+            villaId,
+            'AMENITIES_FACILITIES',
+            {
               caption: `${facilityItemName} - Photo ${index + 1}`,
               altText: `${facilityCategory} - ${facilityItemName}`,
-              // Set first facility photo as main if no main photo exists
               isMain: !existingMainPhotoFacility && index === 0,
-              // Store SharePoint metadata
-              sharePointPath: sharePointResult.filePath,
-              sharePointFileId: sharePointResult.fileId,
-              // Store facility item as subfolder for organization
-              subfolder: facilityItemName,
+              subfolder: facilityItemName
+            }
+          );
+
+          // Add the facility-specific metadata to the photo record
+          const photo = await prisma.photo.update({
+            where: { id: databaseResult.id },
+            data: {
+              tags: facilityTags,
+              sortOrder: index,
             },
             include: {
               villa: {
@@ -1143,43 +1160,220 @@ router.post(
             },
           });
 
-          // Clean up temporary file
-          if (fs.existsSync(tempFilePath)) {
-            fs.unlinkSync(tempFilePath);
-          }
+          logger.info(`[FACILITY-DB] Database storage successful for: ${facilityFileName}`);
+          return {
+            ...photo,
+            storageMethod: 'database'
+          };
 
-          return photo;
-        } catch (error) {
-          // Clean up temporary file on error
-          if (fs.existsSync(tempFilePath)) {
-            fs.unlinkSync(tempFilePath);
+        } catch (databaseError) {
+          logger.error(`[FACILITY-DB] Database storage failed for ${facilityFileName}:`, databaseError);
+          
+          // Fallback: SharePoint storage
+          try {
+            logger.info(`[FACILITY-SP] Attempting SharePoint fallback for: ${facilityFileName}`);
+            
+            // Create temporary file for SharePoint upload
+            const tempFilePath = path.join(process.cwd(), 'temp', facilityFileName);
+            
+            // Ensure temp directory exists
+            const tempDir = path.dirname(tempFilePath);
+            if (!fs.existsSync(tempDir)) {
+              fs.mkdirSync(tempDir, { recursive: true });
+            }
+            
+            // Write file buffer to temporary location
+            fs.writeFileSync(tempFilePath, file.buffer);
+
+            // Upload to SharePoint
+            const sharePointResult = await sharePointService.uploadFile(
+              tempFilePath,
+              villaId,
+              facilityFolder,
+              facilityFileName,
+              file.mimetype
+            );
+
+            // Extract actual filename from SharePoint URL to handle auto-renamed duplicates
+            const actualFileName = sharePointResult.fileUrl.split('/').pop()?.split('?')[0] || sharePointResult.fileName;
+            const decodedFileName = decodeURIComponent(actualFileName);
+
+            // Create photo record in database with SharePoint metadata
+            const photo = await prisma.photo.create({
+              data: {
+                villaId,
+                category: 'AMENITIES_FACILITIES',
+                fileName: decodedFileName,
+                fileUrl: sharePointResult.fileUrl,
+                fileSize: sharePointResult.size,
+                mimeType: file.mimetype,
+                tags: facilityTags,
+                sortOrder: index,
+                caption: `${facilityItemName} - Photo ${index + 1}`,
+                altText: `${facilityCategory} - ${facilityItemName}`,
+                isMain: !existingMainPhotoFacility && index === 0,
+                // Store SharePoint metadata
+                sharePointPath: sharePointResult.filePath,
+                sharePointFileId: sharePointResult.fileId,
+                subfolder: facilityItemName,
+                storageLocation: 'sharepoint'
+              },
+              include: {
+                villa: {
+                  select: {
+                    id: true,
+                    villaName: true,
+                    villaCode: true,
+                  },
+                },
+              },
+            });
+
+            // Clean up temporary file
+            if (fs.existsSync(tempFilePath)) {
+              fs.unlinkSync(tempFilePath);
+            }
+
+            logger.info(`[FACILITY-SP] SharePoint fallback successful for: ${facilityFileName}`);
+            return {
+              ...photo,
+              storageMethod: 'sharepoint-fallback'
+            };
+
+          } catch (sharePointError) {
+            logger.error(`[FACILITY-FAIL] Both storage methods failed for ${facilityFileName}:`, sharePointError);
+            throw new Error(`All storage methods failed. DB: ${databaseError?.message}, SP: ${sharePointError.message}`);
           }
-          throw error;
         }
       });
 
       const photos = await Promise.all(uploadPromises);
 
-      logger.info(`${photos.length} facility photos uploaded for ${facilityItemName} in villa ${villa.villaName}`);
+      // Count storage methods used
+      const storageStats = photos.reduce((stats, photo) => {
+        const method = photo.storageMethod || 'unknown';
+        stats[method] = (stats[method] || 0) + 1;
+        return stats;
+      }, {} as Record<string, number>);
+
+      logger.info(`${photos.length} facility photos uploaded for ${facilityItemName} in villa ${villa.villaName}`, {
+        storageStats,
+        facilityCategory,
+        facilityItemName
+      });
       
-      // Update the facility checklist item with the first photo URL
-      if (photos.length > 0 && facilityItemId) {
+      // Update the facility checklist item with comprehensive photo data
+      if (photos.length > 0 && facilityItemName && facilityCategory) {
         try {
-          await prisma.facilityChecklist.update({
-            where: { id: facilityItemId },
-            data: { photoUrl: photos[0].fileUrl }
-          });
+          let facilityRecord = null;
+          
+          // First try with facilityItemId if provided
+          if (facilityItemId) {
+            logger.info(`Trying to find facility by ID: ${facilityItemId}`);
+            facilityRecord = await prisma.facilityChecklist.findUnique({
+              where: { id: facilityItemId }
+            });
+            
+            if (!facilityRecord) {
+              logger.warn(`Facility with ID ${facilityItemId} not found, trying fallback lookup`);
+            }
+          }
+          
+          // Fallback: find by combination of villa, category, and item name
+          if (!facilityRecord) {
+            logger.info(`Looking up facility by: villa=${villa.id}, category=${facilityCategory}, itemName=${facilityItemName}`);
+            facilityRecord = await prisma.facilityChecklist.findFirst({
+              where: {
+                villaId: villa.id,
+                category: facilityCategory as any,
+                itemName: facilityItemName
+              }
+            });
+            
+            // Try exact match first, then partial match
+            if (!facilityRecord) {
+              facilityRecord = await prisma.facilityChecklist.findFirst({
+                where: {
+                  villaId: villa.id,
+                  category: facilityCategory as any,
+                  itemName: {
+                    contains: facilityItemName,
+                    mode: 'insensitive'
+                  }
+                }
+              });
+            }
+          }
+          
+          if (facilityRecord) {
+            const firstPhoto = photos[0];
+            const photoFile = files[0]; // Get original file for metadata
+            
+            // Prepare comprehensive photo data update
+            const photoUpdateData: any = {
+              photoUrl: firstPhoto.fileUrl,
+              // Add binary photo data if available
+              photoData: photoFile ? photoFile.buffer : null,
+              photoMimeType: photoFile ? photoFile.mimetype : firstPhoto.mimeType,
+              photoSize: photoFile ? photoFile.size : firstPhoto.fileSize,
+              photoWidth: firstPhoto.width || null,
+              photoHeight: firstPhoto.height || null,
+              lastCheckedAt: new Date(),
+              checkedBy: req.user?.id || 'system'
+            };
+            
+            await prisma.facilityChecklist.update({
+              where: { id: facilityRecord.id },
+              data: photoUpdateData
+            });
+            
+            logger.info(`✅ Updated facility ${facilityItemName} with comprehensive photo data:`, {
+              facilityId: facilityRecord.id,
+              photoUrl: !!photoUpdateData.photoUrl,
+              photoData: !!photoUpdateData.photoData,
+              photoSize: photoUpdateData.photoSize,
+              photoMimeType: photoUpdateData.photoMimeType,
+              dimensions: `${photoUpdateData.photoWidth}x${photoUpdateData.photoHeight}`
+            });
+          } else {
+            logger.error(`❌ Could not find facility record for update:`, {
+              villaId: villa.id,
+              facilityCategory,
+              facilityItemName,
+              providedFacilityId: facilityItemId
+            });
+            
+            // Log all available facilities for debugging
+            const availableFacilities = await prisma.facilityChecklist.findMany({
+              where: { villaId: villa.id },
+              select: { id: true, category: true, itemName: true }
+            });
+            logger.info(`Available facilities in villa ${villa.id}:`, availableFacilities);
+          }
         } catch (facilityError) {
-          logger.warn('Could not update facility checklist with photo URL:', facilityError);
+          logger.error('❌ Failed to update facility checklist with photo data:', facilityError);
         }
       }
 
       res.status(201).json({
         message: `${photos.length} facility photos uploaded successfully`,
-        photos,
+        photos: photos.map(photo => ({
+          ...photo,
+          // Ensure all photos have proper URLs for frontend
+          fileUrl: photo.fileUrl || (photo.storageMethod === 'database' ? getFileUrl(photo.id, 'photo') : photo.fileUrl),
+          thumbnailUrl: photo.thumbnailUrl || (photo.storageMethod === 'database' ? getFileUrl(photo.id, 'photo') + '/thumbnail' : undefined)
+        })),
+        storageStats,
         facilityFolder,
         facilityItemName,
-        facilityCategory
+        facilityCategory,
+        info: {
+          primaryStorage: 'database',
+          fallbackStorage: 'sharepoint', 
+          databaseFirst: true,
+          facilityCategory,
+          facilityItemName
+        }
       });
     } catch (error) {
       logger.error('Error uploading facility photos:', error);

@@ -93,7 +93,7 @@ export default function FacilityItem({
             console.log('📷 Photo also backed up to SharePoint');
             // Update item with SharePoint URL as backup
             onUpdate({ 
-              photoUrl: previewUrl, // Keep local preview
+              photoUrl: reader.result as string, // Keep local preview from FileReader
               sharePointUrl: sharePointResp.data.photos[0].fileUrl // Store SharePoint backup URL
             });
           }

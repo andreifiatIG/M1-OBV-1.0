@@ -68,7 +68,7 @@ async function testFacilityPersistence() {
       step: 8,
       data: { facilities: newFacilities },
       completed: true
-    });
+    }, 'test-user-id');
     
     console.log('✅ Creation completed for step 8');
 
@@ -107,7 +107,7 @@ async function testFacilityPersistence() {
       step: 8,
       data: { facilities: modifiedFacilities },
       completed: true
-    });
+    }, 'test-user-id');
     
     console.log('✅ Modifications completed');
 
@@ -137,7 +137,7 @@ async function testFacilityPersistence() {
       step: 8,
       data: { facilities: facilitiesToUncheck },
       completed: true
-    });
+    }, 'test-user-id');
     
     console.log('✅ Unchecking completed');
 

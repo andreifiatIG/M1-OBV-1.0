@@ -32,9 +32,50 @@ export default function VillaInformationSection({ villa, villaId }: VillaInforma
 
   const handleSave = async () => {
     if (!villaId) return;
-    
+
     try {
-      const response = await clientApi.updateVilla(villaId, formData);
+      // Map UI fields to backend schema fields
+      const updateData: any = {
+        villaName: formData.villaName,
+        // Map to schema fields
+        address: formData.villaAddress,
+        city: formData.villaCity,
+        zipCode: formData.villaPostalCode,
+        landArea: formData.landArea,
+        villaArea: formData.villaArea,
+        maxGuests: formData.maxGuests,
+        bedrooms: formData.bedrooms,
+        bathrooms: formData.bathrooms,
+      };
+
+      // Map property type to enum (uppercase)
+      if (formData.propertyType) {
+        const upper = String(formData.propertyType).toUpperCase();
+        // Accept only valid enums defined in schema
+        const allowed = ['VILLA','APARTMENT','PENTHOUSE','TOWNHOUSE','CHALET','BUNGALOW','ESTATE','HOUSE'];
+        updateData.propertyType = allowed.includes(upper) ? upper : 'VILLA';
+      }
+
+      // Optional style passthrough if present on object
+      if ((villa as any)?.villaStyle) {
+        updateData.villaStyle = (villa as any).villaStyle;
+      }
+
+      // Parse Google coordinates "lat, lng" to latitude/longitude
+      if (formData.googleCoordinates && typeof formData.googleCoordinates === 'string') {
+        const parts = formData.googleCoordinates.split(',').map((p: string) => parseFloat(p.trim()));
+        if (parts.length === 2 && !Number.isNaN(parts[0]) && !Number.isNaN(parts[1])) {
+          updateData.latitude = parts[0];
+          updateData.longitude = parts[1];
+        }
+      }
+
+      // Optional links if available
+      if (formData.googleMapsLink) updateData.googleMapsLink = formData.googleMapsLink;
+      if (formData.oldRatesCardLink) updateData.oldRatesCardLink = formData.oldRatesCardLink;
+      if (formData.iCalCalendarLink) updateData.iCalCalendarLink = formData.iCalCalendarLink;
+
+      const response = await clientApi.updateVilla(villaId, updateData);
       if (response.success) {
         setIsEditing(false);
         window.location.reload();
