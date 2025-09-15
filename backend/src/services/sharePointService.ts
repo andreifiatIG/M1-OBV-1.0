@@ -19,6 +19,9 @@ interface UploadResult {
   size: number;
   mimeType: string;
   sharepointUrl?: string;
+  id?: string;
+  downloadUrl?: string;
+  webUrl?: string;
 }
 
 interface FolderStructure {
@@ -1041,10 +1044,10 @@ class SharePointService {
    * Upload photo file to SharePoint (similar to uploadDocument but for photos)
    */
   async uploadFile(
+    fileBuffer: Buffer,
+    fileName: string,
     filePath: string,
     villaId: string,
-    category: string = 'photos',
-    fileName: string,
     mimeType: string = 'application/octet-stream'
   ): Promise<UploadResult> {
     try {
@@ -1052,8 +1055,8 @@ class SharePointService {
         await this.initialize();
       }
 
-      if (!fs.existsSync(filePath)) {
-        throw new Error(`File not found: ${filePath}`);
+      if (!fileBuffer || fileBuffer.length === 0) {
+        throw new Error('File buffer is empty');
       }
 
       // Get villa info for folder structure
@@ -1100,12 +1103,11 @@ class SharePointService {
       // Sanitize file name
       const sanitizedFileName = this.sanitizeFileName(fileName);
       
-      // Create category folder path within the photos folder
-      const categoryFolder = category.replace(/\s+/g, '_');
-      const fullPath = `${photosPath}/${categoryFolder}`;
+      // Use the provided filePath directly
+      const fullPath = filePath;
       
-      // Read file content
-      const fileContent = fs.readFileSync(filePath);
+      // Use provided file buffer
+      const fileContent = fileBuffer;
 
       // Upload file using Microsoft Graph service
       const uploadResult = await microsoftGraphService.uploadFile(
@@ -1114,12 +1116,11 @@ class SharePointService {
         fullPath,
         sanitizedFileName,
         fileContent,
-        { description: `Photo for villa ${villaId} - ${category}` }
+        { description: `Photo for villa ${villaId}` }
       );
 
       logger.info('Photo uploaded to SharePoint successfully', {
         villaId,
-        category,
         fileName: sanitizedFileName,
         sharePointPath: `${fullPath}/${sanitizedFileName}`,
         fileId: uploadResult.id

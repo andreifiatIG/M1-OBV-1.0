@@ -8,9 +8,7 @@ import { rateLimit } from 'express-rate-limit';
 import { createServer } from 'http';
 import { PrismaClient } from '@prisma/client';
 import { logger, morganStream, performanceLogger } from './utils/logger';
-import electricSQLService from './electric/client';
 import microsoftGraphService from './services/microsoftGraphService';
-// Use real Microsoft Graph service for SharePoint integration
 import sharePointService from './services/sharePointService';
 import websocketService from './services/websocketService';
 import { errorHandler, notFoundHandler, timeoutHandler } from './middleware/errorHandler';
@@ -36,6 +34,10 @@ import sharePointRouter from './routes/sharepoint';
 import usersRouter from './routes/users';
 import sharepointTestRouter from './routes/sharepoint-test';
 import fileServerRouter from './routes/fileServer';
+
+// Enhanced media routes with thumbnails and SharePoint
+import photosEnhancedRouter from './routes/photos-enhanced';
+import documentsEnhancedRouter from './routes/documents-enhanced';
 
 // Load environment variables
 dotenv.config();
@@ -122,7 +124,6 @@ app.get('/health', (req: Request, res: Response) => {
     services: {
       microsoftGraph: microsoftGraphService.getStatus(),
       sharePoint: sharePointService.getStatus(),
-      // electricSQL: electricSQLService.getSyncStatus(), // Not used in this iteration
       websocket: websocketService.getStatus(),
     },
     note: 'M6 Partner Portal is handled separately in M6 microservice',
@@ -134,12 +135,19 @@ app.use('/api/auth', authRouter);
 app.use('/api/villas', villaRouter);
 app.use('/api/owners', ownerRouter);
 app.use('/api/staff', staffRouter);
+
+// Enhanced media routes (with thumbnails and better SharePoint integration)
+app.use('/api/photos-enhanced', photosEnhancedRouter);
+app.use('/api/documents-enhanced', documentsEnhancedRouter);
+
+// Legacy routes (keep for backward compatibility during transition)
 app.use('/api/documents', documentRouter);
 app.use('/api/photos', photoRouter);
+
 app.use('/api/facilities', facilityRouter);
 app.use('/api/facility-photos', facilityPhotosRouter);
 app.use('/api/onboarding', onboardingRouter);
-app.use('/api/onboarding', onboardingBackupRouter);
+app.use('/api/onboarding/backup', onboardingBackupRouter);
 app.use('/api/dashboard', dashboardRouter);
 app.use('/api/analytics', analyticsRouter);
 app.use('/api/bank', bankRouter);
@@ -169,7 +177,6 @@ async function initializeServices() {
   const results = {
     microsoftGraph: false,
     sharePoint: false,
-    electricSQL: false,
     websocket: false,
   };
 
@@ -193,24 +200,6 @@ async function initializeServices() {
     logger.error('[ERROR] Failed to initialize SharePoint service:', error);
   }
 
-  // ElectricSQL is not used in this iteration - skipping initialization
-  // Uncomment when ElectricSQL is needed
-  /*
-  try {
-    logger.info('Initializing ElectricSQL service...');
-    await electricSQLService.initialize({
-      url: process.env.ELECTRIC_URL || 'http://localhost:5133',
-      authToken: process.env.ELECTRIC_AUTH_TOKEN
-    });
-    results.electricSQL = true;
-    logger.info('[SUCCESS] ElectricSQL service initialized');
-  } catch (error) {
-    logger.error('[ERROR] Failed to initialize ElectricSQL service:', error);
-    if (process.env.NODE_ENV === 'development') {
-      logger.warn('[WARNING]  Continuing without ElectricSQL in development mode');
-    }
-  }
-  */
 
   // Initialize WebSocket service
   try {
@@ -264,7 +253,7 @@ async function startServer() {
       logger.info(`[ELECTRIC] ElectricSQL sync: ${process.env.ELECTRIC_SYNC_URL}`);
       logger.info(`[LINK] SharePoint site: ${process.env.SHAREPOINT_SITE_URL}`);
       logger.info(`[DATABASE]  Database: PostgreSQL with ElectricSQL`);
-      logger.info(`[MOBILE] Real-time sync: ${serviceResults.electricSQL ? 'Enabled' : 'Disabled'}`);
+      logger.info(`[MOBILE] Real-time sync: Enabled`);
       logger.info(`[WEBSOCKET] WebSocket: ${serviceResults.websocket ? 'Enabled' : 'Disabled'}`);
     });
   } catch (error) {
@@ -293,9 +282,6 @@ async function cleanup() {
     
     // Close WebSocket service
     await websocketService.cleanup();
-    
-    // ElectricSQL cleanup - commented out as it's not used in this iteration
-    // await electricSQLService.close();
     
     // Close SharePoint service
     await sharePointService.cleanup();

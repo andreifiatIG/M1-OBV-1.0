@@ -47,7 +47,10 @@ async function getClerkToken(): Promise<string | null> {
     const token = await clerk.session?.getToken();
     return token || null;
   } catch (error) {
-    console.error('Error getting Clerk token:', error);
+    // Remove console.error in production, should be handled by error reporting service
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Error getting Clerk token:', error);
+    }
     return null;
   }
 }
@@ -56,17 +59,68 @@ async function getClerkToken(): Promise<string | null> {
 export class ClientApiClient {
   private baseURL: string;
   private token: string | null = null;
+  private tokenExpiryTime: number | null = null;
+  private isRefreshingToken: boolean = false;
+  private tokenRefreshPromise: Promise<string | null> | null = null;
 
   constructor(token?: string) {
     this.baseURL = API_URL;
     this.token = token || null;
-    // Initialize with base URL
-    this.baseURL = API_URL;
+    // Set token expiry to 45 minutes from now (Clerk tokens expire after 1 hour)
+    if (token) {
+      this.tokenExpiryTime = Date.now() + (45 * 60 * 1000);
+    }
   }
 
   // Set token manually (useful for components with useAuth hook)
   setToken(token: string | null) {
     this.token = token;
+    if (token) {
+      this.tokenExpiryTime = Date.now() + (45 * 60 * 1000);
+    } else {
+      this.tokenExpiryTime = null;
+    }
+  }
+
+  // Check if token needs refresh
+  private needsTokenRefresh(): boolean {
+    if (!this.token || !this.tokenExpiryTime) return false;
+    // Refresh token 5 minutes before expiry
+    return Date.now() > (this.tokenExpiryTime - (5 * 60 * 1000));
+  }
+
+  // Refresh token if needed
+  private async refreshTokenIfNeeded(): Promise<string | null> {
+    if (!this.needsTokenRefresh()) {
+      return this.token;
+    }
+
+    // Prevent multiple concurrent refresh attempts
+    if (this.isRefreshingToken && this.tokenRefreshPromise) {
+      return await this.tokenRefreshPromise;
+    }
+
+    this.isRefreshingToken = true;
+    this.tokenRefreshPromise = this.attemptTokenRefresh();
+
+    try {
+      const newToken = await this.tokenRefreshPromise;
+      this.setToken(newToken);
+      return newToken;
+    } finally {
+      this.isRefreshingToken = false;
+      this.tokenRefreshPromise = null;
+    }
+  }
+
+  // Attempt to refresh the token
+  private async attemptTokenRefresh(): Promise<string | null> {
+    try {
+      return await getClerkToken();
+    } catch (error) {
+      // Silent token refresh failure - should be handled by error reporting service
+      return null;
+    }
   }
 
   async request<T = any>(
@@ -82,22 +136,39 @@ export class ClientApiClient {
       headers['Content-Type'] = 'application/json';
     }
 
-    // Use manually set token first, then try to get from Clerk
-    let authToken = this.token;
+    // Get fresh token - refresh if needed
+    let authToken = await this.refreshTokenIfNeeded();
     if (!authToken) {
       authToken = await getClerkToken();
+      this.setToken(authToken);
+    }
+
+    // Remove logging in production - should use structured logging service
+    if (process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_DEBUG === 'true') {
+      console.log('API Request:', { endpoint, hasToken: !!authToken, tokenLength: authToken?.length });
     }
 
     if (authToken) {
       headers['Authorization'] = `Bearer ${authToken}`;
+    } else {
+      if (process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_DEBUG === 'true') {
+        console.warn('No authentication token available for API request to:', endpoint);
+      }
     }
 
     try {
       const fullUrl = `${this.baseURL}${endpoint}`;
       
+      console.log('Making request to:', fullUrl);
       const response = await fetch(fullUrl, {
         ...options,
         headers,
+      });
+
+      console.log('Response received:', { 
+        status: response.status, 
+        statusText: response.statusText,
+        ok: response.ok 
       });
 
       // Check if response is JSON by looking at content-type
@@ -225,6 +296,30 @@ export class ClientApiClient {
       method: 'PUT',
       body: JSON.stringify(data),
     });
+  }
+
+  async getCurrentUserVilla() {
+    try {
+      const villasResponse = await this.getVillas();
+      if (!villasResponse.success || !villasResponse.data || villasResponse.data.length === 0) {
+        return {
+          success: false,
+          error: 'No villas found for current user',
+          data: null
+        };
+      }
+      
+      // Get the first villa (or the active one)
+      const villa = villasResponse.data[0];
+      return await this.getVillaProfile(villa.id);
+    } catch (error) {
+      console.error('Error getting current user villa:', error);
+      return {
+        success: false,
+        error: 'Failed to get current user villa',
+        data: null
+      };
+    }
   }
 
   async getVillaProfile(id: string) {
@@ -501,27 +596,21 @@ export class ClientApiClient {
       headers['X-Auto-Save'] = 'true';
     }
     
-    // Determine if step should be marked as completed based on validation
-    let completed = !isAutoSave; // Default behavior for manual saves
-    
-    if (isAutoSave) {
-      // For auto-saves, check if the step data is valid and complete
-      try {
-        // Import validation function dynamically to avoid circular dependencies
-        const { validateStepData } = await import('../components/onboarding/stepConfig');
-        const validation = validateStepData(step, data);
-        completed = validation.isValid && Object.keys(validation.errors).length === 0;
-        console.log(`🏦 Auto-save validation for step ${step}:`, {
-          isValid: validation.isValid,
-          errorCount: Object.keys(validation.errors).length,
-          errors: validation.errors,
-          completed,
-          data: Object.keys(data)
-        });
-      } catch (error) {
-        console.warn('Could not validate step data for completion check:', error);
-        completed = false; // Conservative approach - don't mark as completed if validation fails
-      }
+    // Always validate to determine completion state conservatively
+    let completed = false;
+    try {
+      const { validateStepData } = await import('../components/onboarding/stepConfig');
+      const validation = validateStepData(step, data);
+      completed = validation.isValid && Object.keys(validation.errors).length === 0;
+      console.log(`✅ Validation for step ${step}:`, {
+        isAutoSave: !!isAutoSave,
+        isValid: validation.isValid,
+        errorCount: Object.keys(validation.errors).length,
+        completed
+      });
+    } catch (error) {
+      console.warn('Could not validate step data for completion check. Proceeding without completion flag.', error);
+      completed = false;
     }
     
     return this.request(`/api/onboarding/${villaId}/step`, {

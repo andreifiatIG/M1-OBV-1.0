@@ -2,7 +2,7 @@
 
 A comprehensive villa management system with PostgreSQL backend and Next.js frontend.
 
-## 🚀 Features
+##Features
 
 - **Villa Management**: Complete CRUD operations for villa properties
 - **Owner Management**: Detailed owner information and contact management
@@ -15,13 +15,13 @@ A comprehensive villa management system with PostgreSQL backend and Next.js fron
 - **Onboarding Workflow**: Step-by-step villa onboarding process
 - **Real-time Updates**: ElectricSQL integration for real-time data sync (optional)
 
-## 📋 Prerequisites
+##Prerequisites
 
 - Node.js 18+ and npm 8+
 - PostgreSQL 14+
 - Git
 
-## 🛠️ Installation
+##Installation
 
 1. **Clone the repository**
 ```bash
@@ -69,7 +69,7 @@ npm run db:setup
 npm run db:seed
 ```
 
-## 🚀 Running the Application
+##Running the Application
 
 ### Development Mode
 ```bash
@@ -85,7 +85,7 @@ This will start:
 npm run build
 ```
 
-## 📁 Project Structure
+##Project Structure
 
 ```
 M1-PostgreSQL-Standalone/
@@ -109,7 +109,7 @@ M1-PostgreSQL-Standalone/
 
 ```
 
-## 🔗 API Endpoints
+##API Endpoints
 
 ### Authentication
 - `POST /api/auth/login` - User login
@@ -172,7 +172,7 @@ npm run test:backend
 npm run test:frontend
 ```
 
-## 📝 Environment Variables
+##Environment Variables
 
 ### Backend (.env)
 - `DATABASE_URL` - PostgreSQL connection string
@@ -185,7 +185,7 @@ npm run test:frontend
 - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` - Clerk authentication
 - `CLERK_SECRET_KEY` - Clerk secret key
 
-## 🤝 Contributing
+##Contributing
 
 1. Fork the repository
 2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
@@ -193,10 +193,10 @@ npm run test:frontend
 4. Push to the branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
 
-## 📄 License
+##License
 
 This project is proprietary and confidential.
 
-## 👥 Support
+##Support
 
 For support and questions, please contact the ILS development team.

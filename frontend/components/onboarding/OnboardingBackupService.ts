@@ -26,14 +26,18 @@ class OnboardingBackupService {
   private options: Required<BackupOptions>;
   private isOnline: boolean = true;
   private retryQueue: (() => Promise<void>)[] = [];
+  private apiUrl: string;
+  private getAuthToken: (() => Promise<string | null>) | null = null;
 
   private constructor(options: BackupOptions = {}) {
     this.sessionId = this.generateSessionId();
+    this.apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001';
     this.options = {
       debounceMs: options.debounceMs ?? 2000,
       maxRetries: options.maxRetries ?? 3,
       enableLocalStorage: options.enableLocalStorage ?? true,
-      enableServerBackup: options.enableServerBackup ?? true,
+      // Temporarily disable server backup to isolate the issue
+      enableServerBackup: process.env.NODE_ENV === 'production' ? (options.enableServerBackup ?? true) : false,
     };
 
     this.setupOnlineDetection();
@@ -48,10 +52,33 @@ class OnboardingBackupService {
     return OnboardingBackupService.instance;
   }
 
+  public setAuthTokenProvider(getToken: () => Promise<string | null>): void {
+    this.getAuthToken = getToken;
+  }
+
   private generateSessionId(): string {
     const timestamp = Date.now().toString(36);
     const random = Math.random().toString(36).substring(2, 8);
     return `onboarding_${timestamp}_${random}`;
+  }
+
+  private async getAuthHeaders(): Promise<Record<string, string>> {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+
+    if (this.getAuthToken) {
+      try {
+        const token = await this.getAuthToken();
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+      } catch (error) {
+        console.warn('Failed to get auth token for backup service:', error);
+      }
+    }
+
+    return headers;
   }
 
   public async saveProgress(
@@ -137,11 +164,10 @@ class OnboardingBackupService {
     
     while (retries < this.options.maxRetries) {
       try {
-        const response = await fetch('/api/onboarding/backup', {
+        const headers = await this.getAuthHeaders();
+        const response = await fetch(`${this.apiUrl}/api/onboarding/backup`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers,
           body: JSON.stringify(data),
         });
 
@@ -207,10 +233,11 @@ class OnboardingBackupService {
   private async recoverFromServer(villaId?: string): Promise<BackupData | null> {
     try {
       const url = villaId 
-        ? `/api/onboarding/backup/${villaId}`
-        : '/api/onboarding/backup/latest';
-        
-      const response = await fetch(url);
+        ? `${this.apiUrl}/api/onboarding/backup/${villaId}`
+        : `${this.apiUrl}/api/onboarding/backup/latest`;
+      
+      const headers = await this.getAuthHeaders();
+      const response = await fetch(url, { headers });
       
       if (!response.ok) {
         if (response.status === 404) return null;
@@ -291,10 +318,11 @@ class OnboardingBackupService {
   private async clearFromServer(villaId?: string): Promise<void> {
     try {
       const url = villaId 
-        ? `/api/onboarding/backup/${villaId}`
-        : '/api/onboarding/backup';
-        
-      await fetch(url, { method: 'DELETE' });
+        ? `${this.apiUrl}/api/onboarding/backup/${villaId}`
+        : `${this.apiUrl}/api/onboarding/backup`;
+      
+      const headers = await this.getAuthHeaders();
+      await fetch(url, { method: 'DELETE', headers });
     } catch (error) {
       console.warn('Server cleanup failed:', error);
     }

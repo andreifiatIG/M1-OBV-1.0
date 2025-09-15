@@ -20,8 +20,8 @@ export interface BankDetailsResponse {
   villaId: string;
   accountHolderName: string;
   bankName: string;
-  accountNumber: string; // Decrypted for response
-  iban?: string; // Decrypted for response
+  accountNumber: string;
+  iban?: string; 
   swiftCode?: string;
   branchCode?: string;
   currency: string;

@@ -4,19 +4,9 @@ import { z } from 'zod';
 import onboardingService from '../services/onboardingService';
 import { authenticate } from '../middleware/auth';
 import { validateRequest } from '../middleware/validation';
-import { 
-  onboardingRateLimit, 
-  onboardingReadRateLimit, 
-  onboardingCompleteRateLimit,
-  autoSaveRateLimit
-} from '../middleware/rateLimiting';
+import { onboardingRateLimit, onboardingReadRateLimit, onboardingCompleteRateLimit, autoSaveRateLimit} from '../middleware/rateLimiting';
 import villaService from '../services/villaService';
-import { 
-  createSanitizationMiddleware, 
-  createValidationMiddleware, 
-  sanitizers, 
-  validators 
-} from '../middleware/sanitization';
+import { createSanitizationMiddleware, createValidationMiddleware, sanitizers, validators } from '../middleware/sanitization';
 import { cacheMiddleware, CacheDuration, invalidateCache } from '../middleware/cache';
 import { logger } from '../utils/logger';
 
@@ -35,28 +25,58 @@ const onboardingStepSanitization = createSanitizationMiddleware({
       // Deep sanitize object while preserving structure
       const sanitized: any = {};
       
-      // Common field sanitization
+      // =================================================================
+      // STEP 1 – VILLA INFORMATION
+      // =================================================================
+      
+      // Villa basic information
       if (data.villaName) sanitized.villaName = sanitizers.text(data.villaName);
-      if (data.location) sanitized.location = sanitizers.text(data.location);
       if (data.address) sanitized.address = sanitizers.text(data.address);
+      if (data.villaAddress) sanitized.address = sanitizers.text(data.villaAddress); // Map villaAddress -> address
       if (data.city) sanitized.city = sanitizers.text(data.city);
+      if (data.villaCity) sanitized.city = sanitizers.text(data.villaCity); // Map villaCity -> city
       if (data.country) sanitized.country = sanitizers.text(data.country);
+      if (data.villaCountry) sanitized.country = sanitizers.text(data.villaCountry); // Map villaCountry -> country
       if (data.zipCode) sanitized.zipCode = sanitizers.text(data.zipCode);
+      if (data.villaPostalCode) sanitized.zipCode = sanitizers.text(data.villaPostalCode); // Map villaPostalCode -> zipCode
       if (data.description) sanitized.description = sanitizers.richText(data.description, 'moderate');
       if (data.shortDescription) sanitized.shortDescription = sanitizers.richText(data.shortDescription, 'strict');
       
-      // Numbers
+      // Villa contact information
+      if (data.propertyEmail) sanitized.propertyEmail = sanitizers.email(data.propertyEmail);
+      if (data.propertyWebsite) sanitized.propertyWebsite = sanitizers.url(data.propertyWebsite);
+      
+      // Property numbers and dimensions
       if (data.bedrooms !== undefined) sanitized.bedrooms = sanitizers.integer(data.bedrooms);
       if (data.bathrooms !== undefined) sanitized.bathrooms = sanitizers.integer(data.bathrooms);
       if (data.maxGuests !== undefined) sanitized.maxGuests = sanitizers.integer(data.maxGuests);
       if (data.propertySize !== undefined) sanitized.propertySize = sanitizers.number(data.propertySize);
       if (data.plotSize !== undefined) sanitized.plotSize = sanitizers.number(data.plotSize);
+      // Map frontend aliases: villaArea -> propertySize, landArea -> plotSize
+      if (data.villaArea !== undefined) sanitized.propertySize = sanitizers.number(data.villaArea);
+      if (data.landArea !== undefined) sanitized.plotSize = sanitizers.number(data.landArea);
       if (data.yearBuilt !== undefined) sanitized.yearBuilt = sanitizers.integer(data.yearBuilt);
       if (data.renovationYear !== undefined) sanitized.renovationYear = sanitizers.integer(data.renovationYear);
       if (data.latitude !== undefined) sanitized.latitude = sanitizers.number(data.latitude);
       if (data.longitude !== undefined) sanitized.longitude = sanitizers.number(data.longitude);
       
-      // Owner details - Basic fields
+      // Villa style and type fields
+      if (data.villaStyle) sanitized.villaStyle = sanitizers.text(data.villaStyle);
+      if (data.propertyType) sanitized.propertyType = sanitizers.text(data.propertyType);
+      if (data.locationType) sanitized.locationType = sanitizers.text(data.locationType);
+      
+      // Villa website and external links
+      if (data.website) sanitized.website = sanitizers.url(data.website);
+      if (data.googleMapsLink) sanitized.googleMapsLink = sanitizers.url(data.googleMapsLink);
+      if (data.oldRatesCardLink) sanitized.oldRatesCardLink = sanitizers.url(data.oldRatesCardLink);
+      if (data.iCalCalendarLink) sanitized.iCalCalendarLink = sanitizers.url(data.iCalCalendarLink);
+      if (data.googleCoordinates) sanitized.googleCoordinates = sanitizers.text(data.googleCoordinates);
+      
+      // =================================================================
+      // STEP 2 – OWNER DETAILS
+      // =================================================================
+            
+      // Owner basic personal information
       if (data.firstName) sanitized.firstName = sanitizers.text(data.firstName);
       if (data.lastName) sanitized.lastName = sanitizers.text(data.lastName);
       if (data.email) sanitized.email = sanitizers.email(data.email);
@@ -66,7 +86,7 @@ const onboardingStepSanitization = createSanitizationMiddleware({
       if (data.country) sanitized.country = sanitizers.text(data.country);
       if (data.zipCode) sanitized.zipCode = sanitizers.text(data.zipCode);
       
-      // Owner details - Extended fields
+      // Owner extended personal fields
       if (data.alternativePhone) sanitized.alternativePhone = sanitizers.phone(data.alternativePhone);
       if (data.nationality) sanitized.nationality = sanitizers.text(data.nationality);
       if (data.passportNumber) sanitized.passportNumber = sanitizers.text(data.passportNumber);
@@ -79,39 +99,25 @@ const onboardingStepSanitization = createSanitizationMiddleware({
       if (data.communicationPreference) sanitized.communicationPreference = sanitizers.text(data.communicationPreference);
       if (data.notes) sanitized.notes = sanitizers.text(data.notes);
       
-      // Owner details - Company fields
+      // Owner company information
       if (data.companyName) sanitized.companyName = sanitizers.text(data.companyName);
       if (data.companyAddress) sanitized.companyAddress = sanitizers.text(data.companyAddress);
       if (data.companyTaxId) sanitized.companyTaxId = sanitizers.text(data.companyTaxId);
       if (data.companyVat) sanitized.companyVat = sanitizers.text(data.companyVat);
       
-      // Owner details - Manager fields
+      // Owner manager information
       if (data.managerName) sanitized.managerName = sanitizers.text(data.managerName);
       if (data.managerEmail) sanitized.managerEmail = sanitizers.email(data.managerEmail);
       if (data.managerPhone) sanitized.managerPhone = sanitizers.phone(data.managerPhone);
       if (data.managerPhoneCountryCode) sanitized.managerPhoneCountryCode = sanitizers.text(data.managerPhoneCountryCode);
       if (data.managerPhoneDialCode) sanitized.managerPhoneDialCode = sanitizers.text(data.managerPhoneDialCode);
       
-      // Owner details - Property contact fields
-      if (data.propertyEmail) sanitized.propertyEmail = sanitizers.email(data.propertyEmail);
-      if (data.propertyWebsite) sanitized.propertyWebsite = sanitizers.url(data.propertyWebsite);
-      
-      // Owner details - Owner type
+      // Owner type
       if (data.ownerType) sanitized.ownerType = sanitizers.text(data.ownerType);
       
-      // Bank details  
-      if (data.accountHolderName) sanitized.accountHolderName = sanitizers.text(data.accountHolderName);
-      if (data.bankName) sanitized.bankName = sanitizers.text(data.bankName);
-      if (data.accountNumber) sanitized.accountNumber = sanitizers.text(data.accountNumber);
-      if (data.iban) sanitized.iban = sanitizers.text(data.iban);
-      if (data.swiftCode) sanitized.swiftCode = sanitizers.text(data.swiftCode);
-      if (data.branchName) sanitized.branchName = sanitizers.text(data.branchName);
-      if (data.branchCode) sanitized.branchCode = sanitizers.text(data.branchCode);
-      if (data.branchAddress) sanitized.branchAddress = sanitizers.text(data.branchAddress);
-      if (data.bankCountry) sanitized.bankCountry = sanitizers.text(data.bankCountry);
-      if (data.currency) sanitized.currency = sanitizers.text(data.currency);
-      if (data.accountType) sanitized.accountType = sanitizers.text(data.accountType);
-      if (data.notes) sanitized.notes = sanitizers.text(data.notes);
+      // =================================================================
+      // STEP 3 – CONTRACTUAL DETAILS
+      // =================================================================
       
       // Financial data
       if (data.commissionRate !== undefined) sanitized.commissionRate = sanitizers.number(data.commissionRate);
@@ -122,37 +128,95 @@ const onboardingStepSanitization = createSanitizationMiddleware({
       if (data.contractStartDate) sanitized.contractStartDate = sanitizers.text(data.contractStartDate);
       if (data.contractEndDate) sanitized.contractEndDate = sanitizers.text(data.contractEndDate);
       
-      // Payout days
+      // Payout configuration
       if (data.payoutDay1 !== undefined) sanitized.payoutDay1 = sanitizers.integer(data.payoutDay1);
       if (data.payoutDay2 !== undefined) sanitized.payoutDay2 = sanitizers.integer(data.payoutDay2);
       
-      // VAT and other contractual fields
+      // VAT and legal information
       if (data.vatRegistrationNumber) sanitized.vatRegistrationNumber = sanitizers.text(data.vatRegistrationNumber);
       if (data.dbdNumber) sanitized.dbdNumber = sanitizers.text(data.dbdNumber);
       if (data.vatPaymentTerms) sanitized.vatPaymentTerms = sanitizers.text(data.vatPaymentTerms);
       if (data.paymentTerms) sanitized.paymentTerms = sanitizers.text(data.paymentTerms);
       if (data.specialTerms) sanitized.specialTerms = sanitizers.text(data.specialTerms);
+      
+      // Insurance information
       if (data.insuranceProvider) sanitized.insuranceProvider = sanitizers.text(data.insuranceProvider);
       if (data.insurancePolicyNumber) sanitized.insurancePolicyNumber = sanitizers.text(data.insurancePolicyNumber);
       if (data.insuranceExpiry) sanitized.insuranceExpiry = sanitizers.text(data.insuranceExpiry);
+      
+      // Check-in/out configuration
       if (data.checkInTime) sanitized.checkInTime = sanitizers.text(data.checkInTime);
       if (data.checkOutTime) sanitized.checkOutTime = sanitizers.text(data.checkOutTime);
       if (data.minimumStayNights !== undefined) sanitized.minimumStayNights = sanitizers.integer(data.minimumStayNights);
       if (data.paymentThroughIPL !== undefined) sanitized.paymentThroughIPL = sanitizers.boolean(data.paymentThroughIPL);
       
-      // URLs and usernames
-      if (data.website) sanitized.website = sanitizers.url(data.website);
-      if (data.googleMapsLink) sanitized.googleMapsLink = sanitizers.url(data.googleMapsLink);
-      if (data.oldRatesCardLink) sanitized.oldRatesCardLink = sanitizers.url(data.oldRatesCardLink);
-      if (data.iCalCalendarLink) sanitized.iCalCalendarLink = sanitizers.url(data.iCalCalendarLink);
+      // Tags array
+      if (data.tags) sanitized.tags = sanitizers.array(data.tags, sanitizers.text);
+
+      // =================================================================
+      // STEP 4 – BANK DETAILS  
+      // =================================================================
+      
+      // Bank account holder information
+      if (data.accountHolderName) sanitized.accountHolderName = sanitizers.text(data.accountHolderName);
+      if (data.bankName) sanitized.bankName = sanitizers.text(data.bankName);
+      if (data.accountNumber) sanitized.accountNumber = sanitizers.text(data.accountNumber);
+      if (data.iban) sanitized.iban = sanitizers.text(data.iban);
+      if (data.swiftCode) sanitized.swiftCode = sanitizers.text(data.swiftCode);
+      
+      // Bank branch information
+      if (data.branchName) sanitized.branchName = sanitizers.text(data.branchName);
+      if (data.branchCode) sanitized.branchCode = sanitizers.text(data.branchCode);
+      if (data.branchAddress) sanitized.branchAddress = sanitizers.text(data.branchAddress);
+      if (data.bankCountry) sanitized.bankCountry = sanitizers.text(data.bankCountry);
+      
+      // Account configuration
+      if (data.currency) sanitized.currency = sanitizers.text(data.currency);
+      if (data.accountType) sanitized.accountType = sanitizers.text(data.accountType);
+      if (data.notes) sanitized.notes = sanitizers.text(data.notes);
+      // =================================================================
+      // STEP 5 – OTA CREDENTIALS
+      // =================================================================
+      
+      // Online Travel Agency platform credentials
+      if (data.platforms && Array.isArray(data.platforms)) {
+        sanitized.platforms = data.platforms.map((platform: any) => ({
+          platform: sanitizers.text(platform.platform),
+          username: platform.username ? sanitizers.text(platform.username) : null,
+          password: platform.password ? sanitizers.text(platform.password) : null,
+          propertyId: platform.propertyId ? sanitizers.text(platform.propertyId) : null,
+          apiKey: platform.apiKey ? sanitizers.text(platform.apiKey) : null,
+          apiSecret: platform.apiSecret ? sanitizers.text(platform.apiSecret) : null,
+          listingUrl: platform.listingUrl ? sanitizers.url(platform.listingUrl) : null,
+          accountUrl: platform.accountUrl ? sanitizers.url(platform.accountUrl) : null,
+          propertyUrl: platform.propertyUrl ? sanitizers.url(platform.propertyUrl) : null,
+          isActive: platform.isActive !== undefined ? sanitizers.boolean(platform.isActive) : true,
+        }));
+      }
+      
+      // Legacy OTA username fields (individual fields for backward compatibility)
       if (data.bookingComUsername) sanitized.bookingComUsername = sanitizers.email(data.bookingComUsername);
       if (data.airbnbUsername) sanitized.airbnbUsername = sanitizers.email(data.airbnbUsername);
       if (data.vrboUsername) sanitized.vrboUsername = sanitizers.email(data.vrboUsername);
       
-      // Arrays
-      if (data.tags) sanitized.tags = sanitizers.array(data.tags, sanitizers.text);
+      // =================================================================
+      // STEP 6 – DOCUMENTS
+      // =================================================================
+      
+      // Document metadata arrays (uploads handled elsewhere)
+      if (data.documents && Array.isArray(data.documents)) {
+        try {
+          sanitized.documents = sanitizers.json(data.documents);
+        } catch {
+          sanitized.documents = [];
+        }
+      }
 
-      // Staff array (step 7) - comprehensive sanitization
+      // =================================================================
+      // STEP 7 – STAFF CONFIGURATION
+      // =================================================================
+      
+      // Staff members array with comprehensive sanitization
       if (data.staff && Array.isArray(data.staff)) {
         sanitized.staff = data.staff.map((staffMember: any) => {
           const sanitizedStaff: any = {};
@@ -229,9 +293,13 @@ const onboardingStepSanitization = createSanitizationMiddleware({
         }).filter((staff: any) => staff.firstName || staff.lastName); // Only keep staff with at least a name
       }
 
-      // Facilities array (step 8) - Enhanced sanitization with validation and logging
+      // =================================================================
+      // STEP 8 – FACILITIES CHECKLIST
+      // =================================================================
+      
+      // Enhanced facilities sanitization with validation and logging
       if (data.facilities && Array.isArray(data.facilities)) {
-        console.log(`🏭 [SANITIZER] Processing ${data.facilities.length} facilities`);
+        console.log(`[SANITIZER] Processing ${data.facilities.length} facilities`);
         
         const validCategories = [
           'property_layout_spaces', 'occupancy_sleeping', 'bathrooms', 'kitchen_dining',
@@ -247,7 +315,7 @@ const onboardingStepSanitization = createSanitizationMiddleware({
           .map((item: any, index: number) => {
             // Enhanced validation with detailed logging
             if (!item.category || !item.itemName) {
-              console.warn(`🏭 [SANITIZER] Skipping facility ${index + 1}: missing category or itemName`, {
+              console.warn(`[SANITIZER] Skipping facility ${index + 1}: missing category or itemName`, {
                 category: item.category,
                 itemName: item.itemName
               });
@@ -256,7 +324,7 @@ const onboardingStepSanitization = createSanitizationMiddleware({
             
             // Validate category
             if (!validCategories.includes(item.category)) {
-              console.warn(`🏭 [SANITIZER] Invalid category "${item.category}" for facility "${item.itemName}"`);
+              console.warn(`[SANITIZER] Invalid category "${item.category}" for facility "${item.itemName}"`);
             }
             
             const sanitizedItem = {
@@ -270,7 +338,7 @@ const onboardingStepSanitization = createSanitizationMiddleware({
                   ? sanitizers.boolean(item.available)
                   : false,
               quantity: item.quantity !== undefined && item.quantity !== null 
-                ? Math.max(0, sanitizers.integer(item.quantity))
+                ? Math.max(0, sanitizers.integer(item.quantity) || 0)
                 : null,
               condition: item.condition && ['new', 'good', 'fair', 'poor'].includes(item.condition)
                 ? sanitizers.text(item.condition)
@@ -283,33 +351,39 @@ const onboardingStepSanitization = createSanitizationMiddleware({
               lastCheckedAt: item.lastCheckedAt ? sanitizers.text(item.lastCheckedAt) : null,
             };
             
-            console.debug(`🏭 [SANITIZER] Sanitized facility: ${sanitizedItem.category}/${sanitizedItem.itemName} (available: ${sanitizedItem.isAvailable})`);
+            console.debug(`[SANITIZER] Sanitized facility: ${sanitizedItem.category}/${sanitizedItem.itemName} (available: ${sanitizedItem.isAvailable})`);
             return sanitizedItem;
           })
           .filter(Boolean); // Remove invalid facilities
           
-        console.log(`🏭 [SANITIZER] Facilities sanitization completed: ${sanitized.facilities.length} valid facilities`);
+        console.log(`[SANITIZER] Facilities sanitization completed: ${sanitized.facilities.length} valid facilities`);
       }
       
-      // OTA Platforms array
-      if (data.platforms && Array.isArray(data.platforms)) {
-        sanitized.platforms = data.platforms.map((platform: any) => ({
-          platform: sanitizers.text(platform.platform),
-          username: platform.username ? sanitizers.text(platform.username) : null,
-          password: platform.password ? sanitizers.text(platform.password) : null,
-          propertyId: platform.propertyId ? sanitizers.text(platform.propertyId) : null,
-          apiKey: platform.apiKey ? sanitizers.text(platform.apiKey) : null,
-          apiSecret: platform.apiSecret ? sanitizers.text(platform.apiSecret) : null,
-          listingUrl: platform.listingUrl ? sanitizers.url(platform.listingUrl) : null,
-          accountUrl: platform.accountUrl ? sanitizers.url(platform.accountUrl) : null,
-          propertyUrl: platform.propertyUrl ? sanitizers.url(platform.propertyUrl) : null,
-          isActive: platform.isActive !== undefined ? sanitizers.boolean(platform.isActive) : true,
-        }));
-      }
+      // =================================================================
+      // STEP 9 – PHOTOS/BEDROOMS CONFIGURATION
+      // =================================================================
       
+      // Bedroom configuration data (stored in field progress for step 9)
+      if (data.bedrooms && Array.isArray(data.bedrooms)) {
+        try {
+          sanitized.bedrooms = sanitizers.json(data.bedrooms);
+        } catch {
+          sanitized.bedrooms = [];
+        }
+      }
+
+      // =================================================================
+      // STEP 10 – REVIEW & SUBMIT
+      // =================================================================
+      
+      // Final review and submission data
+      if (data.reviewNotes) sanitized.reviewNotes = sanitizers.text(data.reviewNotes);
+      if (data.agreedToTerms !== undefined) sanitized.agreedToTerms = sanitizers.boolean(data.agreedToTerms);
+      if (data.dataAccuracyConfirmed !== undefined) sanitized.dataAccuracyConfirmed = sanitizers.boolean(data.dataAccuracyConfirmed);
+
       // Pass through safe enum values and booleans
       const safeFields = [
-        'propertyType', 'villaStyle', 'contractType', 'paymentSchedule', 
+        'propertyType', 'villaStyle', 'locationType', 'contractType', 'paymentSchedule', 
         'cancellationPolicy', 'status', 'isActive', 'completed'
       ];
       
@@ -456,9 +530,11 @@ router.get('/:villaId',
     });
   } catch (error) {
     console.error('Error getting onboarding progress:', error);
-    res.status(500).json({
+    const message = error instanceof Error ? error.message : 'Failed to get onboarding progress';
+    const status = typeof message === 'string' && message.toLowerCase().includes('not found') ? 404 : 500;
+    res.status(status).json({
       success: false,
-      message: error instanceof Error ? error.message : 'Failed to get onboarding progress',
+      message,
     });
   }
 });
@@ -487,9 +563,12 @@ router.put('/:villaId/step',
     });
   } catch (error) {
     console.error('Error updating onboarding step:', error);
-    res.status(400).json({
+    const message = error instanceof Error ? error.message : 'Failed to update onboarding step';
+    const lower = typeof message === 'string' ? message.toLowerCase() : '';
+    const status = lower.includes('not found') ? 404 : 400;
+    res.status(status).json({
       success: false,
-      message: error instanceof Error ? error.message : 'Failed to update onboarding step',
+      message,
     });
   }
 });

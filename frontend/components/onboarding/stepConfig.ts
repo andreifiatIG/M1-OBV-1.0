@@ -34,6 +34,10 @@ export const STEP_CONFIGURATIONS: Record<number, StepConfiguration> = {
       { field: 'address', type: 'required', message: 'Address is required' },
       { field: 'city', type: 'required', message: 'City is required' },
       { field: 'country', type: 'required', message: 'Country is required' },
+      { field: 'propertyType', type: 'required', message: 'Property type is required' },
+      { field: 'bedrooms', type: 'required', message: 'Bedrooms are required' },
+      { field: 'bathrooms', type: 'required', message: 'Bathrooms are required' },
+      { field: 'maxGuests', type: 'required', message: 'Maximum guests are required' },
       { field: 'bedrooms', type: 'number', message: 'Valid number of bedrooms required' },
       { field: 'bathrooms', type: 'number', message: 'Valid number of bathrooms required' },
       { field: 'maxGuests', type: 'number', message: 'Maximum guests must be a valid number' },
@@ -230,6 +234,29 @@ export const validateStepData = (stepNumber: number, data: any): StepValidationS
           errors[rule.field] = rule.message;
         }
         break;
+    }
+  }
+
+  // Custom logic for Step 1: location OR (city AND country)
+  if (stepNumber === 1) {
+    const hasLocation = !!(data.location && String(data.location).trim());
+    const hasCityCountry = !!(data.city && String(data.city).trim()) && !!(data.country && String(data.country).trim());
+
+    if (hasLocation || hasCityCountry) {
+      // Clear redundant errors when one of the conditions is satisfied
+      delete errors.location;
+      if (hasLocation) {
+        delete errors.city;
+        delete errors.country;
+      }
+      if (hasCityCountry) {
+        delete errors.location;
+      }
+    } else {
+      // Neither provided: condense into a single, clear error
+      delete errors.city;
+      delete errors.country;
+      errors.location = 'Provide either Location or both City and Country';
     }
   }
 

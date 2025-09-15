@@ -46,7 +46,7 @@ class OnboardingLogger {
     return OnboardingLogger.instance;
   }
 
-  private log(step: number | string, event: string, data?: any, duration?: number) {
+  public log(step: number | string, event: string, data?: any, duration?: number) {
     const logEvent: LogEvent = {
       timestamp: new Date().toISOString(),
       step,

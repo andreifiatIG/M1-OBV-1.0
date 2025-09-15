@@ -2,7 +2,6 @@ import { Router, Request, Response } from 'express';
 import { clerkAuth, optionalClerkAuth, authorize, createMockClerkToken } from '../middleware/clerkAuth';
 import microsoftGraphService from '../services/microsoftGraphService';
 import sharePointService from '../services/sharePointService';
-import electricSQLService from '../electric/client';
 import { logger } from '../utils/logger';
 
 const router = Router();
@@ -19,7 +18,6 @@ router.get('/health', (_req: Request, res: Response) => {
       database: 'connected',
       microsoftGraph: microsoftGraphService ? 'initialized' : 'not initialized',
       sharePoint: sharePointService ? 'initialized' : 'not initialized',
-      electricSQL: electricSQLService.getSyncStatus().connected ? 'connected' : 'disconnected',
     },
   });
 });
@@ -121,32 +119,6 @@ router.get('/sharepoint-status', optionalClerkAuth, async (req: Request, res: Re
     res.status(500).json({
       success: false,
       error: error.message || 'SharePoint connection failed',
-    });
-  }
-});
-
-/**
- * ElectricSQL status
- */
-router.get('/electric-status', optionalClerkAuth, (req: Request, res: Response) => {
-  try {
-    const status = electricSQLService.getSyncStatus();
-    
-    res.json({
-      success: true,
-      message: 'ElectricSQL status retrieved',
-      data: {
-        connected: status.connected,
-        subscriptionsCount: status.subscriptionsCount,
-        authContext: status.authContext,
-        authenticated: !!req.user,
-      },
-    });
-  } catch (error: any) {
-    logger.error('ElectricSQL test failed:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message || 'ElectricSQL status check failed',
     });
   }
 });

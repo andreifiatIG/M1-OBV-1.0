@@ -9,6 +9,17 @@ const nextConfig: NextConfig = {
     // Allow deployment with TypeScript errors (for now)
     ignoreBuildErrors: true,
   },
+  experimental: {
+    // Disable webpack cache for stability
+    webpackBuildWorker: false,
+  },
+  webpack: (config, { dev, isServer }) => {
+    // Reduce webpack cache issues in development
+    if (dev) {
+      config.cache = false;
+    }
+    return config;
+  },
   images: {
     remotePatterns: [
       {

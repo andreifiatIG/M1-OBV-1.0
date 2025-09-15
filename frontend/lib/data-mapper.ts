@@ -52,16 +52,6 @@ function getSubcategoryFromItemName(itemName: string): string {
 /**
  * Convert camelCase to snake_case
  */
-function toSnakeCase(str: string): string {
-  return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
-}
-
-/**
- * Convert snake_case to camelCase
- */
-function toCamelCase(str: string): string {
-  return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
-}
 
 /**
  * Map frontend facility category IDs (kebab-case) to backend enum values (underscore_case)
@@ -179,36 +169,63 @@ function mapPhotoCategoryToFrontend(backendCategory: string): string {
  * Map frontend villa data to backend schema
  */
 export function mapVillaDataToBackend(frontendData: any) {
+  // Helper to include a trimmed string only when non-empty
+  const strOrUndef = (v: any) => {
+    if (v === undefined || v === null) return undefined;
+    const s = String(v).trim();
+    return s.length > 0 ? s : undefined;
+  };
+  // Helper to include a positive integer only when > 0
+  const intGt0 = (v: any) => {
+    const n = parseInt(v);
+    return Number.isFinite(n) && n > 0 ? n : undefined;
+  };
+  // Helper to include a positive float only when > 0
+  const floatGt0 = (v: any) => {
+    const n = parseFloat(v);
+    return Number.isFinite(n) && n > 0 ? n : undefined;
+  };
+  // Coordinates helper
+  const parsed = parseLatLngFromCoordinates(frontendData.googleCoordinates);
+  const latCandidate = frontendData.latitude ?? parsed?.lat;
+  const lngCandidate = frontendData.longitude ?? parsed?.lng;
+  const lat = Number.isFinite(Number(latCandidate)) ? Number(latCandidate) : undefined;
+  const lng = Number.isFinite(Number(lngCandidate)) ? Number(lngCandidate) : undefined;
+
   return {
     // Villa Information
-    villaName: frontendData.villaName,
+    villaName: strOrUndef(frontendData.villaName),
     villaCode: frontendData.villaCode || generateVillaCode(frontendData.villaName),
-    location: frontendData.location || frontendData.locationType || '',
-    address: frontendData.villaAddress || frontendData.address || '',
-    city: frontendData.villaCity || frontendData.city || '',
-    country: frontendData.villaCountry || frontendData.country || '',
-    zipCode: frontendData.villaPostalCode || frontendData.zipCode,
-    bedrooms: parseInt(frontendData.bedrooms) || 0,
-    bathrooms: parseInt(frontendData.bathrooms) || 0,
-    maxGuests: parseInt(frontendData.maxGuests) || 0,
-    propertySize: parseFloat(frontendData.villaArea) || null,
-    plotSize: parseFloat(frontendData.landArea) || null,
+    location: strOrUndef(frontendData.location || frontendData.locationType),
+    address: strOrUndef(frontendData.villaAddress || frontendData.address),
+    city: strOrUndef(frontendData.villaCity || frontendData.city),
+    country: strOrUndef(frontendData.villaCountry || frontendData.country),
+    zipCode: strOrUndef(frontendData.villaPostalCode || frontendData.zipCode),
+    bedrooms: intGt0(frontendData.bedrooms),
+    bathrooms: intGt0(frontendData.bathrooms),
+    maxGuests: intGt0(frontendData.maxGuests),
+    propertySize: floatGt0(frontendData.villaArea),
+    plotSize: floatGt0(frontendData.landArea),
     // Ensure enum casing aligns with backend expectations
-    propertyType: frontendData.propertyType ? String(frontendData.propertyType).toUpperCase() : 'VILLA',
-    yearBuilt: frontendData.yearBuilt ? parseInt(frontendData.yearBuilt) : null,
-    renovationYear: frontendData.renovationYear ? parseInt(frontendData.renovationYear) : null,
-    villaStyle: frontendData.villaStyle ? String(frontendData.villaStyle).toUpperCase() : null,
-    description: frontendData.description,
-    shortDescription: frontendData.shortDescription,
+    propertyType: frontendData.propertyType ? String(frontendData.propertyType).toUpperCase() : undefined,
+    yearBuilt: Number.isFinite(parseInt(frontendData.yearBuilt)) ? parseInt(frontendData.yearBuilt) : undefined,
+    renovationYear: Number.isFinite(parseInt(frontendData.renovationYear)) ? parseInt(frontendData.renovationYear) : undefined,
+    villaStyle: strOrUndef(frontendData.villaStyle ? String(frontendData.villaStyle).toUpperCase() : ''),
+    description: strOrUndef(frontendData.description),
+    shortDescription: strOrUndef(frontendData.shortDescription),
     
-    // Google Maps Integration - FIXED CRITICAL ISSUE
-    latitude: frontendData.latitude || parseLatLngFromCoordinates(frontendData.googleCoordinates)?.lat,
-    longitude: frontendData.longitude || parseLatLngFromCoordinates(frontendData.googleCoordinates)?.lng,
+    // Google Maps Integration
+    latitude: lat,
+    longitude: lng,
     
-    // External Links - NEWLY ADDED FIELDS
-    googleMapsLink: frontendData.googleMapsLink,
-    oldRatesCardLink: frontendData.oldRatesCardLink,
-    iCalCalendarLink: frontendData.iCalCalendarLink,
+    // External Links - include only if non-empty
+    googleMapsLink: strOrUndef(frontendData.googleMapsLink),
+    oldRatesCardLink: strOrUndef(frontendData.oldRatesCardLink),
+    iCalCalendarLink: strOrUndef(frontendData.iCalCalendarLink),
+    
+    // Property Contact Information
+    propertyEmail: strOrUndef(frontendData.propertyEmail),
+    propertyWebsite: strOrUndef(frontendData.propertyWebsite),
     
     // Additional fields
     status: frontendData.status || 'DRAFT',
@@ -219,8 +236,10 @@ export function mapVillaDataToBackend(frontendData: any) {
  * Map backend villa data to frontend schema
  */
 export function mapVillaDataToFrontend(backendData: any) {
-  console.log('🔍 mapVillaDataToFrontend input:', backendData);
-  console.log('🔍 propertyType from backend:', backendData.propertyType, typeof backendData.propertyType);
+  // Debug logging only in development with debug flag
+  if (process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_DEBUG === 'true') {
+    console.log('Villa data mapping - input:', backendData);
+  }
   const result = {
     // Villa Information
     villaName: backendData.villaName,
@@ -232,7 +251,7 @@ export function mapVillaDataToFrontend(backendData: any) {
     bedrooms: backendData.bedrooms?.toString() || '',
     bathrooms: backendData.bathrooms?.toString() || '',
     maxGuests: backendData.maxGuests?.toString() || '',
-    propertyType: backendData.propertyType || '',
+    propertyType: backendData.propertyType ? backendData.propertyType.toLowerCase() : '',
     villaArea: backendData.propertySize?.toString() || '',
     landArea: backendData.plotSize?.toString() || '',
     locationType: backendData.location,
@@ -240,7 +259,7 @@ export function mapVillaDataToFrontend(backendData: any) {
     // Villa Details - NEW FIELDS
     yearBuilt: backendData.yearBuilt?.toString() || '',
     renovationYear: backendData.renovationYear?.toString() || '',
-    villaStyle: backendData.villaStyle || '',
+    villaStyle: backendData.villaStyle ? backendData.villaStyle.toLowerCase() : '',
     
     // Google Maps - FIXED COORDINATES MAPPING
     latitude: backendData.latitude?.toString() || '',
@@ -254,13 +273,19 @@ export function mapVillaDataToFrontend(backendData: any) {
     oldRatesCardLink: backendData.oldRatesCardLink || '',
     iCalCalendarLink: backendData.iCalCalendarLink || '',
     
+    // Property Contact Information
+    propertyEmail: backendData.propertyEmail || '',
+    propertyWebsite: backendData.propertyWebsite || '',
+    
     // Additional fields
     description: backendData.description || '',
     shortDescription: backendData.shortDescription || '',
     status: backendData.status,
   };
-  console.log('🔍 mapVillaDataToFrontend output:', result);
-  console.log('🔍 propertyType in output:', result.propertyType);
+  // Debug logging only in development with debug flag
+  if (process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_DEBUG === 'true') {
+    console.log('Villa data mapping - output:', result);
+  }
   return result;
 }
 
@@ -306,10 +331,6 @@ export function mapOwnerDataToBackend(frontendData: any) {
     managerPhone: frontendData.managerPhone,
     managerPhoneCountryCode: frontendData.managerPhoneCountryCode,
     managerPhoneDialCode: frontendData.managerPhoneDialCode,
-    
-    // Property Contact Information
-    propertyEmail: frontendData.propertyEmail,
-    propertyWebsite: frontendData.propertyWebsite,
     
     // Additional Info
     preferredLanguage: frontendData.preferredLanguage || 'en',
@@ -391,7 +412,6 @@ export function mapContractualDetailsToBackend(frontendData: any) {
  * Map frontend bank details to backend schema
  */
 export function mapBankDetailsToBackend(frontendData: any) {
-  console.log('🏦 mapBankDetailsToBackend - Frontend input:', frontendData);
   const mapped = {
     // Map frontend field names to database column names
     // Note: securityAcknowledged is not persisted - it's a session-only field
@@ -412,7 +432,6 @@ export function mapBankDetailsToBackend(frontendData: any) {
     taxId: frontendData.taxId,
     notes: frontendData.bankNotes || frontendData.notes,
   };
-  console.log('🏦 mapBankDetailsToBackend - Backend output:', mapped);
   return mapped;
 }
 
@@ -576,12 +595,18 @@ export function mapStaffDataToBackend(frontendData: any) {
  * Map all onboarding step data to backend format
  */
 export function mapOnboardingDataToBackend(step: number, frontendData: any) {
-  // Return empty object if no data
-  if (!frontendData || Object.keys(frontendData).length === 0) {
-    return {};
-  }
+  try {
+    // Return empty object if no data
+    if (!frontendData || Object.keys(frontendData).length === 0) {
+      return {};
+    }
 
-  switch (step) {
+    // Validate step number
+    if (!Number.isInteger(step) || step < 1 || step > 10) {
+      throw new Error(`Invalid step number: ${step}. Must be between 1 and 10.`);
+    }
+
+    switch (step) {
     case 1: // Villa Information
       return mapVillaDataToBackend(frontendData);
     case 2: // Owner Details
@@ -592,7 +617,6 @@ export function mapOnboardingDataToBackend(step: number, frontendData: any) {
       return mapBankDetailsToBackend(frontendData);
     case 5: // OTA Credentials - Fixed mapping to preserve all platforms
       // Convert flat frontend structure to array of platform objects
-      console.log('🔄 Frontend-to-backend OTA mapping input:', frontendData);
       const platforms = [];
       const otaPlatforms = [
         { key: 'bookingCom', platform: 'BOOKING_COM' },
@@ -614,17 +638,20 @@ export function mapOnboardingDataToBackend(step: number, frontendData: any) {
                           frontendData[`${key}ApiSecret`] || frontendData[`${key}ListingUrl`] ||
                           frontendData[`${key}AccountUrl`] || frontendData[`${key}PropertyUrl`];
                                
-        console.log(`🏨 OTA Platform ${key} (${platform}):`, {
-          isListed,
-          hasAnyData,
-          fields: {
-            username: frontendData[`${key}Username`],
-            password: frontendData[`${key}Password`] ? '[HIDDEN]' : '',
-            propertyId: frontendData[`${key}PropertyId`],
-            apiKey: frontendData[`${key}ApiKey`] ? '[HIDDEN]' : '',
-            apiSecret: frontendData[`${key}ApiSecret`] ? '[HIDDEN]' : '',
-          }
-        });
+        // Log platform data processing for debugging in development only
+        if (process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_DEBUG === 'true') {
+          console.log(`OTA Platform ${key} (${platform}):`, {
+            isListed,
+            hasAnyData,
+            fieldsPresent: {
+              username: !!frontendData[`${key}Username`],
+              password: !!frontendData[`${key}Password`],
+              propertyId: !!frontendData[`${key}PropertyId`],
+              apiKey: !!frontendData[`${key}ApiKey`],
+              apiSecret: !!frontendData[`${key}ApiSecret`],
+            }
+          });
+        }
                                
         // Include platform if it's listed OR has existing data
         if (isListed || hasAnyData) {
@@ -643,19 +670,48 @@ export function mapOnboardingDataToBackend(step: number, frontendData: any) {
         }
       }
       
-      console.log('🔄 Frontend-to-backend OTA mapping output:', { platforms });
       return {
         platforms,
       };
-    case 6: // Documents Upload
+    case 6: // Documents Upload - Enhanced mapping with metadata
+      // Handle both direct array and object with documents array
+      const documentsInput = Array.isArray(frontendData) ? frontendData :
+                           Array.isArray(frontendData?.documents) ? frontendData.documents : [];
+
+      // Map frontend document structure to backend schema
+      const mappedDocuments = documentsInput.map((doc: any) => ({
+        // Core document fields
+        type: doc.type || doc.documentType || 'OTHER',
+        category: doc.category || 'other',
+        filename: doc.filename || doc.fileName || doc.name,
+        originalName: doc.originalName || doc.filename || doc.fileName || doc.name,
+        mimeType: doc.mimeType || doc.type || 'application/octet-stream',
+        size: doc.size || 0,
+
+        // SharePoint integration fields
+        sharePointUrl: doc.sharePointUrl || doc.url,
+        sharePointFileId: doc.sharePointId || doc.sharePointFileId,
+        sharePointPath: doc.sharePointPath,
+
+        // Upload status and metadata
+        uploadedAt: doc.uploadedAt || doc.uploaded ? new Date().toISOString() : null,
+        isRequired: doc.isRequired || false,
+        isActive: doc.isActive !== false, // Default to true unless explicitly false
+
+        // Document validation
+        validated: doc.validated || false,
+        validatedAt: doc.validatedAt,
+        validatedBy: doc.validatedBy,
+
+        // Additional metadata
+        description: doc.description || '',
+        notes: doc.notes || ''
+      }));
+
       return {
-        documents: Array.isArray(frontendData.documents) ? frontendData.documents : [],
+        documents: mappedDocuments,
       };
     case 7: // Staff Configuration - Enhanced mapping
-      console.log('🔄 Processing step 7 staff data for backend:', frontendData);
-      console.log('🔄 FrontendData type:', typeof frontendData, 'isArray:', Array.isArray(frontendData));
-      console.log('🔄 FrontendData.staff exists:', !!frontendData?.staff, 'isArray:', Array.isArray(frontendData?.staff));
-      console.log('🔄 Raw frontendData:', JSON.stringify(frontendData, null, 2));
       
       // Handle both direct array and object with staff array
       const staffArray = Array.isArray(frontendData) ? frontendData : 
@@ -668,99 +724,37 @@ export function mapOnboardingDataToBackend(step: number, frontendData: any) {
         staff: mappedStaffForBackend,
       };
     case 8: // Facilities Checklist - Enhanced mapping with comprehensive validation
-      console.log('🏭 [MAPPER] Frontend→Backend facilities mapping started');
-      console.log('🏭 [MAPPER] Input data type:', typeof frontendData, 'has facilities:', !!frontendData?.facilities);
+      // Simplified facilities mapping
       
       // Handle both direct array and object with facilities array
       const facilitiesInput = Array.isArray(frontendData) ? frontendData : 
                             Array.isArray(frontendData?.facilities) ? frontendData.facilities : [];
       
-      console.log('🏭 [MAPPER] Facilities array extracted:', facilitiesInput.length, 'items');
       
       if (facilitiesInput.length === 0) {
-        console.log('🏭 [MAPPER] No facilities to process, returning empty array');
         return { facilities: [] };
       }
+
+      // Filter and map facilities with meaningful data
+      const mappedFacilities = facilitiesInput
+        .filter((facility: any) => {
+          // Include if facility is available/checked or has data or exists in database
+          const isAvailable = facility.available || facility.isAvailable;
+          const hasData = (facility.notes && facility.notes.trim()) ||
+                         (facility.specifications && facility.specifications.trim()) ||
+                         facility.photoUrl || facility.photoData ||
+                         (facility.quantity && facility.quantity > 1) ||
+                         (facility.condition && facility.condition !== 'good') ||
+                         (facility.productLink && facility.productLink.trim());
+          const existsInDB = facility.databaseId || facility.id || facility._fromDatabase;
+
+          return isAvailable || hasData || existsInDB;
+        })
       
-      const validationResults = {
-        processed: 0,
-        valid: 0,
-        invalid: 0,
-        warnings: [] as string[]
-      };
       
-      // Pre-filter to only process meaningful facilities but INCLUDE unchecked facilities that might need deletion
-      const meaningfulFacilities = facilitiesInput.filter((facility: any) => {
-        // Include if available/checked
-        const isAvailable = facility.available || facility.isAvailable;
-        
-        // Include ONLY if has meaningful user modifications (strict filtering)
-        const hasData = (facility.notes && facility.notes.trim().length > 0) ||
-               (facility.specifications && facility.specifications.trim().length > 0) ||
-               (facility.itemNotes && facility.itemNotes.trim().length > 0) ||
-               facility.photoUrl || facility.photoData ||
-               (facility.quantity && facility.quantity > 1) || // Back to > 1 to exclude default values
-               (facility.condition && facility.condition !== 'good' && facility.condition !== '') || // Exclude defaults
-               (facility.productLink && facility.productLink.trim().length > 0);
-        
-        // CRITICAL: Also include if it might exist in database (was previously saved)
-        // We detect this by checking if it has a database ID or came from database
-        const mightExistInDB = facility.databaseId || facility._fromDatabase;
-        
-        const isRelevant = isAvailable || hasData || mightExistInDB;
-        
-        // Debug logging for first few facilities to understand filtering
-        if (facilitiesInput.indexOf(facility) < 5) {
-          console.log(`🏭 [MAPPER] Facility "${facility.itemName || facility.name}" relevance check:`, {
-            available: isAvailable,
-            hasData: hasData,
-            mightExistInDB: mightExistInDB,
-            facilityId: facility.id,
-            isRelevant: isRelevant,
-            dataDetails: {
-              hasNotes: !!(facility.notes && facility.notes.trim().length > 0),
-              hasSpecs: !!(facility.specifications && facility.specifications.trim().length > 0),
-              hasItemNotes: !!(facility.itemNotes && facility.itemNotes.trim().length > 0),
-              hasPhoto: !!(facility.photoUrl || facility.photoData),
-              quantity: facility.quantity,
-              condition: facility.condition
-            }
-          });
-        }
-        
-        return isRelevant;
-      });
-      
-      console.log(`🏭 [MAPPER] Filtered to meaningful facilities: ${meaningfulFacilities.length}/${facilitiesInput.length} (${Math.round(100 * meaningfulFacilities.length / facilitiesInput.length)}% reduction)`);
-      
-      if (meaningfulFacilities.length < facilitiesInput.length) {
-        console.log(`🏭 [MAPPER] Filtered out ${facilitiesInput.length - meaningfulFacilities.length} facilities that had no modifications`);
-      }
-      
-      const sanitizedFacilities = meaningfulFacilities
-        .map((facility: any, index: number) => {
-          validationResults.processed++;
-          
-          // Enhanced validation
-          const warnings: string[] = [];
-          
-          if (!facility.category) {
-            warnings.push(`Facility ${index + 1}: Missing category`);
-          }
-          
-          if (!facility.itemName || facility.itemName.trim().length === 0) {
-            warnings.push(`Facility ${index + 1}: Missing or empty itemName`);
-          }
-          
-          // Skip invalid facilities
-          if (warnings.length > 0 && (!facility.category || !facility.itemName)) {
-            console.warn(`🏭 [MAPPER] Skipping invalid facility ${index + 1}:`, warnings);
-            validationResults.invalid++;
-            validationResults.warnings.push(...warnings);
-            return null;
-          }
-          
-          // Map and sanitize facility data
+        .map((facility: any) => {
+          try {
+            // Map and sanitize facility data
           const mapped = {
             category: mapFacilityCategoryToBackend(facility.category || 'other'),
             subcategory: (facility.subcategory || getSubcategoryFromItemName(facility.itemName || facility.category || '')).substring(0, 100),
@@ -781,51 +775,68 @@ export function mapOnboardingDataToBackend(step: number, frontendData: any) {
             checkedBy: facility.checkedBy ? facility.checkedBy.substring(0, 100) : null,
             lastCheckedAt: facility.lastCheckedAt ? new Date(facility.lastCheckedAt).toISOString() : new Date().toISOString(),
           };
-          
-          // Additional validation warnings
-          if (mapped.category === 'other' && facility.category) {
-            warnings.push(`Facility "${facility.itemName}": Unknown category "${facility.category}" mapped to "other"`);
+
+            return mapped;
+          } catch (error) {
+            console.error(`🏭 [MAPPER] Error mapping facility:`, error);
+            return null;
           }
-          
-          if (warnings.length > 0) {
-            validationResults.warnings.push(...warnings);
-          }
-          
-          validationResults.valid++;
-          
-          console.debug(`🏭 [MAPPER] Mapped facility ${index + 1}:`, {
-            input: `${facility.category}/${facility.itemName}`,
-            output: `${mapped.category}/${mapped.itemName}`,
-            available: mapped.isAvailable,
-            hasPhoto: !!mapped.photoData,
-            warnings: warnings.length
-          });
-          
-          return mapped;
         })
         .filter(Boolean); // Remove null entries
       
-      console.log('🏭 [MAPPER] Validation results:', {
-        processed: validationResults.processed,
-        valid: validationResults.valid,
-        invalid: validationResults.invalid,
-        warningCount: validationResults.warnings.length,
-        outputCount: sanitizedFacilities.length
-      });
-      
-      if (validationResults.warnings.length > 0) {
-        console.warn('🏭 [MAPPER] Validation warnings:', validationResults.warnings);
-      }
-      
-      console.log('🏭 [MAPPER] Final output sample:', sanitizedFacilities.slice(0, 2));
-      
       return {
-        facilities: sanitizedFacilities,
+        facilities: mappedFacilities,
       };
-    case 9: // Photo Upload
+    case 9: // Photo Upload - Enhanced mapping
+      // Handle both direct arrays and nested object structure
+      const photosInput = Array.isArray(frontendData.photos) ? frontendData.photos :
+                         Array.isArray(frontendData) ? frontendData : [];
+      const bedroomsInput = Array.isArray(frontendData.bedrooms) ? frontendData.bedrooms : [];
+
+      // Map photos with proper SharePoint integration
+      const mappedPhotos = photosInput.map((photo: any) => ({
+        // Core photo identification
+        id: photo.id,
+        category: photo.category ? mapPhotoCategoryToBackend(photo.category) : 'GENERAL',
+        subcategory: photo.subcategory || photo.subfolder,
+
+        // File metadata
+        filename: photo.fileName || photo.filename,
+        originalName: photo.fileName || photo.filename,
+        mimeType: photo.file?.type || photo.mimeType || 'image/jpeg',
+        size: photo.file?.size || photo.size || 0,
+
+        // SharePoint integration
+        sharePointFileId: photo.sharePointId || photo.sharePointFileId,
+        sharePointPath: photo.sharePointPath,
+        fileUrl: photo.fileUrl || photo.url,
+        thumbnailUrl: photo.thumbnailUrl,
+
+        // Photo metadata
+        isMain: photo.isMain || false,
+        caption: photo.caption || '',
+        altText: photo.altText || photo.caption || '',
+        sortOrder: photo.sortOrder || 0,
+
+        // Upload status
+        uploaded: photo.uploaded || !!photo.sharePointId,
+      }));
+
+      // Map bedrooms data
+      const mappedBedrooms = bedroomsInput.map((bedroom: any) => ({
+        id: bedroom.id,
+        name: bedroom.name,
+        bedType: bedroom.bedType,
+        bedCount: bedroom.bedCount || 1,
+        hasEnsuite: bedroom.hasEnsuite || false,
+        hasAircon: bedroom.hasAircon || false,
+        // Include photos for each bedroom if they exist
+        photos: Array.isArray(bedroom.photos) ? bedroom.photos : [],
+      }));
+
       return {
-        photos: Array.isArray(frontendData.photos) ? frontendData.photos : [],
-        bedrooms: Array.isArray(frontendData.bedrooms) ? frontendData.bedrooms : [],
+        photos: mappedPhotos,
+        bedrooms: mappedBedrooms,
       };
     case 10: // Review & Submit
       return {
@@ -834,16 +845,255 @@ export function mapOnboardingDataToBackend(step: number, frontendData: any) {
       };
     default:
       return frontendData;
+    }
+  } catch (error) {
+    console.error(`Error mapping frontend data to backend for step ${step}:`, error);
+
+    // Return error information for debugging
+    return {
+      _mappingError: true,
+      _step: step,
+      _error: error instanceof Error ? error.message : 'Unknown mapping error',
+      _originalData: frontendData
+    };
   }
+}
+
+/**
+ * Map complete backend progress response to frontend stepData format
+ * This function extracts data from the villa object and related entities
+ */
+/**
+ * Validates and normalizes step data to ensure consistent structure
+ */
+function validateStepDataStructure(stepData: Record<string, any>): Record<string, any> {
+  const validatedData: Record<string, any> = {};
+
+  // Ensure all steps 1-10 have at least empty object structure
+  for (let i = 1; i <= 10; i++) {
+    const stepKey = `step${i}`;
+    validatedData[stepKey] = stepData[stepKey] || {};
+
+    // Ensure step data is always an object, not a primitive or array
+    if (typeof validatedData[stepKey] !== 'object' || Array.isArray(validatedData[stepKey])) {
+      // Handle legacy array formats
+      if (Array.isArray(validatedData[stepKey])) {
+        switch (i) {
+          case 6: // Documents
+            validatedData[stepKey] = { documents: validatedData[stepKey] };
+            break;
+          case 7: // Staff
+            validatedData[stepKey] = { staff: validatedData[stepKey] };
+            break;
+          case 8: // Facilities
+            validatedData[stepKey] = { facilities: validatedData[stepKey] };
+            break;
+          case 9: // Photos
+            validatedData[stepKey] = { photos: validatedData[stepKey], bedrooms: [] };
+            break;
+          default:
+            validatedData[stepKey] = {};
+        }
+      } else {
+        validatedData[stepKey] = {};
+      }
+    }
+  }
+
+  return validatedData;
+}
+
+export function mapBackendProgressToStepData(progressData: any): Record<string, any> {
+  const stepData: Record<string, any> = {};
+
+  if (!progressData || !progressData.villa) {
+    return validateStepDataStructure(stepData);
+  }
+
+  const villa = progressData.villa;
+
+  // Step 1: Villa Information - Map from villa object
+  if (villa) {
+    stepData.step1 = {
+      villaName: villa.villaName || '',
+      villaAddress: villa.address || '',
+      villaCity: villa.city || '',
+      villaCountry: villa.country || '',
+      villaPostalCode: villa.zipCode || '',
+      bedrooms: villa.bedrooms?.toString() || '',
+      bathrooms: villa.bathrooms?.toString() || '',
+      maxGuests: villa.maxGuests?.toString() || '',
+      propertyType: villa.propertyType || '',
+      villaArea: villa.propertySize?.toString() || '',
+      landArea: villa.plotSize?.toString() || '',
+      latitude: villa.latitude?.toString() || '',
+      longitude: villa.longitude?.toString() || '',
+      locationType: villa.locationType || villa.location || '',
+      googleMapsLink: villa.googleMapsLink || '',
+      oldRatesCardLink: villa.oldRatesCardLink || '',
+      iCalCalendarLink: villa.iCalCalendarLink || '',
+      yearBuilt: villa.yearBuilt?.toString() || '',
+      renovationYear: villa.renovationYear?.toString() || '',
+      villaStyle: villa.villaStyle || '',
+      description: villa.description || '',
+      shortDescription: villa.shortDescription || '',
+      propertyEmail: villa.propertyEmail || '',
+      propertyWebsite: villa.propertyWebsite || villa.website || '',
+    };
+  }
+
+  // Step 2: Owner Details - Map from owner object
+  if (villa.owner) {
+    const owner = villa.owner;
+    stepData.step2 = {
+      ownerType: owner.ownerType || 'INDIVIDUAL',
+      firstName: owner.firstName || '',
+      lastName: owner.lastName || '',
+      email: owner.email || '',
+      phone: owner.phone || '',
+      phoneCountryCode: owner.phoneCountryCode || '',
+      phoneDialCode: owner.phoneDialCode || '',
+      alternativePhone: owner.alternativePhone || '',
+      alternativePhoneCountryCode: owner.alternativePhoneCountryCode || '',
+      alternativePhoneDialCode: owner.alternativePhoneDialCode || '',
+      nationality: owner.nationality || '',
+      passportNumber: owner.passportNumber || '',
+      idNumber: owner.idNumber || '',
+      address: owner.address || '',
+      city: owner.city || '',
+      country: owner.country || '',
+      zipCode: owner.zipCode || '',
+      companyName: owner.companyName || '',
+      companyAddress: owner.companyAddress || '',
+      companyTaxId: owner.companyTaxId || '',
+      companyVat: owner.companyVat || '',
+      managerName: owner.managerName || '',
+      managerEmail: owner.managerEmail || '',
+      managerPhone: owner.managerPhone || '',
+      managerPhoneCountryCode: owner.managerPhoneCountryCode || '',
+      managerPhoneDialCode: owner.managerPhoneDialCode || '',
+      preferredLanguage: owner.preferredLanguage || '',
+      communicationPreference: owner.communicationPreference || '',
+      notes: owner.notes || '',
+    };
+  }
+
+  // Step 3: Contractual Details - Map from contractualDetails object
+  if (villa.contractualDetails) {
+    const contract = villa.contractualDetails;
+    stepData.step3 = {
+      contractSignatureDate: contract.contractStartDate ? new Date(contract.contractStartDate).toISOString().split('T')[0] : '',
+      contractRenewalDate: contract.contractEndDate ? new Date(contract.contractEndDate).toISOString().split('T')[0] : '',
+      contractStartDate: contract.contractStartDate ? new Date(contract.contractStartDate).toISOString().split('T')[0] : '',
+      contractEndDate: contract.contractEndDate ? new Date(contract.contractEndDate).toISOString().split('T')[0] : '',
+      contractType: contract.contractType ? contract.contractType.toLowerCase() : '',
+      serviceCharge: contract.commissionRate?.toString() || '',
+      managementFee: contract.managementFee?.toString() || '',
+      marketingFee: contract.marketingFee?.toString() || '',
+      paymentTerms: contract.paymentTerms || '',
+      paymentSchedule: contract.paymentSchedule ? contract.paymentSchedule.toLowerCase() : 'monthly',
+      minimumStayNights: contract.minimumStayNights?.toString() || '1',
+      payoutDay1: contract.payoutDay1?.toString() || '',
+      payoutDay2: contract.payoutDay2?.toString() || '',
+      vatRegistrationNumber: contract.vatRegistrationNumber || '',
+      dbdNumber: contract.dbdNumber || '',
+      vatPaymentTerms: contract.vatPaymentTerms || '',
+      paymentThroughIPL: contract.paymentThroughIPL || false,
+      cancellationPolicy: contract.cancellationPolicy ? contract.cancellationPolicy.toLowerCase() : 'moderate',
+      checkInTime: contract.checkInTime || '15:00',
+      checkOutTime: contract.checkOutTime || '11:00',
+      insuranceProvider: contract.insuranceProvider || '',
+      insurancePolicyNumber: contract.insurancePolicyNumber || '',
+      insuranceExpiry: contract.insuranceExpiry ? new Date(contract.insuranceExpiry).toISOString().split('T')[0] : '',
+      specialTerms: contract.specialTerms || '',
+    };
+  }
+
+  // Step 4: Bank Details - Map from bankDetails object
+  if (villa.bankDetails) {
+    const bank = villa.bankDetails;
+    stepData.step4 = {
+      accountName: bank.accountHolderName || '',
+      accountHolderName: bank.accountHolderName || '',
+      bankName: bank.bankName || '',
+      bankAccountNumber: bank.accountNumber || '',
+      accountNumber: bank.accountNumber || '',
+      swiftBicCode: bank.swiftCode || '',
+      swiftCode: bank.swiftCode || '',
+      iban: bank.iban || '',
+      bankBranch: bank.branchName || '',
+      branchName: bank.branchName || '',
+      branchCode: bank.branchCode || '',
+      bankAddress: bank.branchAddress || bank.bankAddress || '',
+      branchAddress: bank.branchAddress || bank.bankAddress || '',
+      bankCountry: bank.bankCountry || '',
+      currency: bank.currency || 'IDR',
+      accountType: bank.accountType || 'CHECKING',
+      routingNumber: bank.routingNumber || '',
+      taxId: bank.taxId || '',
+      bankNotes: bank.notes || '',
+      notes: bank.notes || '',
+    };
+  }
+
+  // Step 5: OTA Credentials - Map from otaCredentials array
+  if (villa.otaCredentials && Array.isArray(villa.otaCredentials)) {
+    const otaData: any = {};
+    villa.otaCredentials.forEach((cred: any) => {
+      const platformKey = mapOtaPlatformToFrontendKey(cred.platform);
+      if (platformKey) {
+        otaData[`${platformKey}Listed`] = cred.isListed || false;
+        otaData[`${platformKey}Username`] = cred.username || '';
+        otaData[`${platformKey}Password`] = cred.password || '';
+        otaData[`${platformKey}PropertyId`] = cred.propertyId || '';
+        otaData[`${platformKey}ApiKey`] = cred.apiKey || '';
+        otaData[`${platformKey}ApiSecret`] = cred.apiSecret || '';
+        otaData[`${platformKey}ListingUrl`] = cred.listingUrl || '';
+        otaData[`${platformKey}AccountUrl`] = cred.accountUrl || '';
+        otaData[`${platformKey}PropertyUrl`] = cred.propertyUrl || '';
+      }
+    });
+    stepData.step5 = otaData;
+  }
+
+  // Steps 6-9: Ensure consistent object structure for all steps
+  stepData.step6 = { documents: villa.documents || [] };
+  stepData.step7 = { staff: villa.staff || [] };
+  stepData.step8 = { facilities: villa.facilities || [] };
+  stepData.step9 = { photos: villa.photos || [], bedrooms: [] };
+
+  return validateStepDataStructure(stepData);
+}
+
+/**
+ * Helper function to map OTA platform enum to frontend key
+ */
+function mapOtaPlatformToFrontendKey(platform: string): string | null {
+  const mapping: Record<string, string> = {
+    'BOOKING_COM': 'bookingCom',
+    'AIRBNB': 'airbnb',
+    'VRBO': 'vrbo',
+    'EXPEDIA': 'expedia',
+    'AGODA': 'agoda',
+    'HOTELS_COM': 'hotelsCom',
+    'TRIPADVISOR': 'tripadvisor',
+  };
+  return mapping[platform] || null;
 }
 
 /**
  * Map backend onboarding data to frontend format for each step
  */
 export function mapOnboardingDataFromBackend(step: number, backendData: any) {
-  if (!backendData) return {};
+  try {
+    if (!backendData) return {};
 
-  switch (step) {
+    // Validate step number
+    if (!Number.isInteger(step) || step < 1 || step > 10) {
+      throw new Error(`Invalid step number: ${step}. Must be between 1 and 10.`);
+    }
+
+    switch (step) {
     case 1: // Villa Information
       return mapVillaDataToFrontend(backendData);
     case 2: // Owner Details - Updated mapping to match new frontend structure
@@ -886,10 +1136,6 @@ export function mapOnboardingDataFromBackend(step: number, backendData: any) {
         managerPhoneCountryCode: backendData.managerPhoneCountryCode,
         managerPhoneDialCode: backendData.managerPhoneDialCode,
         
-        // Property Contact Information
-        propertyEmail: backendData.propertyEmail,
-        propertyWebsite: backendData.propertyWebsite,
-        
         // Additional Info
         preferredLanguage: backendData.preferredLanguage,
         communicationPreference: backendData.communicationPreference,
@@ -912,7 +1158,7 @@ export function mapOnboardingDataFromBackend(step: number, backendData: any) {
           ? new Date(backendData.contractStartDate).toISOString().split('T')[0] : '',
         contractEndDate: backendData.contractEndDate 
           ? new Date(backendData.contractEndDate).toISOString().split('T')[0] : '',
-        contractType: backendData.contractType || '',
+        contractType: backendData.contractType ? backendData.contractType.toLowerCase() : '',
         
         // Commission and Fees - Map backend 'commissionRate' field to frontend 'serviceCharge' field
         serviceCharge: backendData.commissionRate?.toString() || '', // Backend field: commissionRate -> Frontend field: serviceCharge
@@ -921,7 +1167,7 @@ export function mapOnboardingDataFromBackend(step: number, backendData: any) {
         
         // Payment Terms
         paymentTerms: backendData.paymentTerms || '',
-        paymentSchedule: backendData.paymentSchedule || 'MONTHLY',
+        paymentSchedule: backendData.paymentSchedule ? backendData.paymentSchedule.toLowerCase() : 'monthly',
         minimumStayNights: backendData.minimumStayNights?.toString() || '1',
         payoutDay1: backendData.payoutDay1?.toString() || '',
         payoutDay2: backendData.payoutDay2?.toString() || '',
@@ -933,7 +1179,7 @@ export function mapOnboardingDataFromBackend(step: number, backendData: any) {
         paymentThroughIPL: backendData.paymentThroughIPL || false,
         
         // Policies
-        cancellationPolicy: backendData.cancellationPolicy || 'MODERATE',
+        cancellationPolicy: backendData.cancellationPolicy ? backendData.cancellationPolicy.toLowerCase() : 'moderate',
         checkInTime: backendData.checkInTime || '15:00',
         checkOutTime: backendData.checkOutTime || '11:00',
         
@@ -968,7 +1214,7 @@ export function mapOnboardingDataFromBackend(step: number, backendData: any) {
         branchAddress: backendData.branchAddress || backendData.bankAddress || '',
         bankCountry: backendData.bankCountry || '',
         currency: backendData.currency || 'IDR',
-        accountType: backendData.accountType || 'CHECKING',
+        accountType: backendData.accountType ? backendData.accountType.toLowerCase() : 'checking',
         routingNumber: backendData.routingNumber || '',
         taxId: backendData.taxId || '',
         bankNotes: backendData.notes || '',
@@ -1051,9 +1297,60 @@ export function mapOnboardingDataFromBackend(step: number, backendData: any) {
       
       console.log('🔄 Backend-to-frontend OTA mapping output:', otaData);
       return otaData;
-    case 6: // Documents Upload
+    case 6: // Documents Upload - Enhanced backend to frontend mapping
+      // Handle multiple backend data formats
+      const backendDocuments = Array.isArray(backendData) ? backendData :
+                              Array.isArray(backendData?.documents) ? backendData.documents :
+                              [];
+
+      // Map backend document structure to frontend expectations
+      const mappedDocuments = backendDocuments.map((doc: any) => ({
+        // Core document identification
+        id: doc.id,
+        name: doc.filename || doc.originalName || doc.name,
+        displayName: doc.displayName || doc.originalName || doc.filename || doc.name,
+
+        // Document type and categorization
+        type: doc.type || 'OTHER',
+        category: doc.category || 'other',
+        documentType: doc.type || 'OTHER', // Alias for compatibility
+
+        // File metadata
+        filename: doc.filename || doc.originalName,
+        originalName: doc.originalName || doc.filename,
+        fileName: doc.filename || doc.originalName, // Alias for compatibility
+        mimeType: doc.mimeType || 'application/octet-stream',
+        size: doc.size || 0,
+
+        // SharePoint integration
+        sharePointUrl: doc.sharePointUrl || doc.url,
+        sharePointId: doc.sharePointFileId || doc.sharePointId,
+        sharePointFileId: doc.sharePointFileId || doc.sharePointId, // Alias
+        sharePointPath: doc.sharePointPath,
+        url: doc.sharePointUrl || doc.url, // Primary URL
+
+        // Upload and validation status
+        uploaded: !!doc.uploadedAt,
+        uploadedAt: doc.uploadedAt,
+        isRequired: doc.isRequired || false,
+        isActive: doc.isActive !== false,
+
+        // Validation metadata
+        validated: doc.validated || false,
+        validatedAt: doc.validatedAt,
+        validatedBy: doc.validatedBy,
+
+        // Additional metadata for frontend
+        description: doc.description || '',
+        notes: doc.notes || '',
+
+        // File state for UI
+        uploading: false, // Default state for loaded documents
+        error: null, // No errors for successfully loaded documents
+      }));
+
       return {
-        documents: backendData.documents || [],
+        documents: mappedDocuments,
       };
     case 7: // Staff Configuration - Enhanced mapping  
       console.log('🔄 Processing backend staff data for step 7:', backendData);
@@ -1065,27 +1362,20 @@ export function mapOnboardingDataFromBackend(step: number, backendData: any) {
       console.log('🔄 Mapped staff for frontend:', mappedStaff);
       // FIX: Return staff array as expected by StaffConfiguratorStep
       return { staff: mappedStaff };
-    case 8: // Facilities - Enhanced backend to frontend mapping with validation
-      console.log('🏭 [MAPPER] Backend→Frontend facilities mapping started');
-      console.log('🏭 [MAPPER] Input data structure:', typeof backendData, 'is array:', Array.isArray(backendData));
+    case 8: // Facilities - Backend to frontend mapping
       
       // Accept multiple input formats for flexibility
       let backendFacilities;
       if (Array.isArray(backendData)) {
         backendFacilities = backendData;
-        console.log('🏭 [MAPPER] Using direct array format');
       } else if (backendData && Array.isArray(backendData.facilities)) {
         backendFacilities = backendData.facilities;
-        console.log('🏭 [MAPPER] Using nested facilities array');
       } else {
         backendFacilities = [];
-        console.log('🏭 [MAPPER] No valid facilities data found, using empty array');
       }
       
-      console.log(`🏭 [MAPPER] Processing ${backendFacilities.length} facilities from backend`);
       
       if (backendFacilities.length === 0) {
-        console.log('🏭 [MAPPER] No facilities to map, returning empty structure');
         return { facilities: [] };
       }
       
@@ -1169,7 +1459,7 @@ export function mapOnboardingDataFromBackend(step: number, backendData: any) {
             return mapped;
           } catch (error) {
             console.error(`🏭 [MAPPER] Error mapping facility ${index + 1}:`, error);
-            mappingResults.warnings.push(`Facility ${index + 1}: Mapping error - ${error.message}`);
+            console.error(`Facility mapping error:`, error instanceof Error ? error.message : 'Unknown error');
             return null;
           }
         })
@@ -1218,79 +1508,37 @@ export function mapOnboardingDataFromBackend(step: number, backendData: any) {
         };
       });
       
-      // Handle bedrooms data - it can come from multiple sources
+      // Simplified bedroom data handling - single source of truth
       let bedroomsData = [];
-      
-      console.log('🛏️ DataMapper: Searching for bedrooms data in:', Object.keys(backendData));
-      
-      // Priority 1: Direct bedrooms array in backendData
-      if (backendData.bedrooms && Array.isArray(backendData.bedrooms)) {
+
+      // Check for bedrooms data in order of preference
+      if (Array.isArray(backendData.bedrooms)) {
         bedroomsData = backendData.bedrooms;
-        console.log('🛏️ DataMapper: Found bedrooms in direct backend data:', bedroomsData);
-      }
-      // Priority 2: Bedrooms from onboarding progress metadata
-      else if (backendData.metadata && backendData.metadata.bedrooms && Array.isArray(backendData.metadata.bedrooms)) {
-        bedroomsData = backendData.metadata.bedrooms;
-        console.log('🛏️ DataMapper: Found bedrooms in metadata:', bedroomsData);
-      }
-      // Priority 3: Parse from JSON string in bedrooms field
-      else if (typeof backendData.bedrooms === 'string') {
+      } else if (typeof backendData.bedrooms === 'string') {
         try {
           bedroomsData = JSON.parse(backendData.bedrooms);
-          console.log('🛏️ DataMapper: Parsed bedrooms from JSON string:', bedroomsData);
         } catch (e) {
-          console.warn('🛏️ DataMapper: Failed to parse bedrooms JSON:', e, backendData.bedrooms);
           bedroomsData = [];
         }
-      }
-      // Priority 4: Check fieldProgress data if available (bedrooms field)
-      else if (backendData.fieldProgress && typeof backendData.fieldProgress.bedrooms === 'string') {
+      } else if (backendData.fieldProgress?.bedrooms) {
         try {
-          bedroomsData = JSON.parse(backendData.fieldProgress.bedrooms);
-          console.log('🛏️ DataMapper: Found bedrooms in field progress:', bedroomsData);
+          bedroomsData = typeof backendData.fieldProgress.bedrooms === 'string'
+            ? JSON.parse(backendData.fieldProgress.bedrooms)
+            : backendData.fieldProgress.bedrooms;
         } catch (e) {
-          console.warn('🛏️ DataMapper: Failed to parse bedrooms from field progress:', e);
           bedroomsData = [];
         }
       }
-      // Priority 5: Check fieldProgress data if available (bedrooms_config field - backup)
-      else if (backendData.fieldProgress && typeof backendData.fieldProgress.bedrooms_config === 'string') {
-        try {
-          bedroomsData = JSON.parse(backendData.fieldProgress.bedrooms_config);
-          console.log('🛏️ DataMapper: Found bedrooms in field progress (bedrooms_config):', bedroomsData);
-        } catch (e) {
-          console.warn('🛏️ DataMapper: Failed to parse bedrooms_config from field progress:', e);
-          bedroomsData = [];
-        }
-      }
-      // Priority 6: Check if bedrooms is nested in villa data (common in onboarding progress)
-      else if (backendData.villa && backendData.villa.fieldProgress && typeof backendData.villa.fieldProgress.bedrooms === 'string') {
-        try {
-          bedroomsData = JSON.parse(backendData.villa.fieldProgress.bedrooms);
-          console.log('🛏️ DataMapper: Found bedrooms in villa fieldProgress:', bedroomsData);
-        } catch (e) {
-          console.warn('🛏️ DataMapper: Failed to parse bedrooms from villa fieldProgress:', e);
-          bedroomsData = [];
-        }
-      }
-      
+
       // Ensure bedrooms is always an array
       if (!Array.isArray(bedroomsData)) {
-        console.warn('🛏️ DataMapper: Bedrooms data is not an array, defaulting to empty array');
         bedroomsData = [];
       }
-      
-      console.log('🛏️ DataMapper: Final bedrooms data for step 9:', bedroomsData);
-      
-      const finalResult = {
+
+      return {
         photos: mappedPhotos,
         bedrooms: bedroomsData,
       };
-      
-      console.log('🛏️ DataMapper: Final step 9 result:', finalResult);
-      console.log('🛏️ DataMapper: Bedrooms count in result:', finalResult.bedrooms.length);
-      
-      return finalResult;
     case 10: // Review
       return {
         reviewNotes: backendData.reviewNotes || '',
@@ -1298,6 +1546,17 @@ export function mapOnboardingDataFromBackend(step: number, backendData: any) {
       };
     default:
       return backendData;
+  }
+  } catch (error) {
+    console.error(`Error mapping backend data to frontend for step ${step}:`, error);
+
+    // Return error information for debugging
+    return {
+      _mappingError: true,
+      _step: step,
+      _error: error instanceof Error ? error.message : 'Unknown mapping error',
+      _originalData: backendData
+    };
   }
 }
 

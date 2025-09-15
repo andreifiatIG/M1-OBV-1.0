@@ -11,7 +11,6 @@ model Villa {
   id                 String                   @id @default(uuid())
   villaCode          String                   @unique
   villaName          String
-  location           String
   address            String
   city               String
   country            String
@@ -27,6 +26,7 @@ model Villa {
   renovationYear     Int?
   propertyType       PropertyType
   villaStyle         VillaStyle?
+  locationType       String?             // Seaview, Beachfront, Garden, Mountain, City, Countryside
   description        String?
   shortDescription   String?
   status             VillaStatus              @default(DRAFT)
@@ -39,6 +39,8 @@ model Villa {
   googleMapsLink     String?
   iCalCalendarLink   String?
   oldRatesCardLink   String?
+  propertyEmail      String?
+  propertyWebsite    String?
   bankDetails        BankDetails?
   contractualDetails ContractualDetails?
   documents          Document[]
@@ -167,6 +169,8 @@ model OTACredentials {
   apiKey      String?
   apiSecret   String?
   isActive    Boolean     @default(true)
+  syncStatus  SyncStatus  @default(PENDING) // Sync status for external platform integration
+  lastSyncAt  DateTime?   // Last synchronization timestamp
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
   accountUrl  String?
@@ -176,6 +180,7 @@ model OTACredentials {
 
   @@unique([villaId, platform])
   @@index([platform])
+  @@index([syncStatus])
 }
 
 model Staff {
@@ -272,6 +277,9 @@ model Document {
   deletedAt        DateTime?
   sharePointFileId String?
   sharePointPath   String?
+  sharePointUrl    String?      // Direct SharePoint URL for frontend display
+  validFrom        DateTime?    // Document validity start date
+  validUntil       DateTime?    // Document validity end date
   // Database file storage
   fileContent      Bytes?       // Original file content
   isCompressed     Boolean      @default(false)
@@ -280,6 +288,7 @@ model Document {
   villa            Villa        @relation(fields: [villaId], references: [id], onDelete: Cascade)
 
   @@index([villaId, documentType])
+  @@index([validUntil]) // For querying expiring documents
 }
 
 
@@ -331,6 +340,10 @@ model OnboardingProgress {
   documentsUploaded           Boolean          @default(false)
   reviewCompleted             Boolean          @default(false)
   status                      OnboardingStatus @default(IN_PROGRESS)
+  submittedAt                 DateTime?        // When onboarding was submitted for review
+  rejectedAt                  DateTime?        // When onboarding was rejected
+  rejectedBy                  String?          // Who rejected the onboarding
+  rejectionNotes              String?          // Rejection reason/notes
   createdAt                   DateTime         @default(now())
   updatedAt                   DateTime         @updatedAt
   villa                       Villa            @relation(fields: [villaId], references: [id], onDelete: Cascade)
@@ -338,6 +351,7 @@ model OnboardingProgress {
   @@index([status, currentStep])
   @@index([villaId, status])
   @@index([updatedAt])
+  @@index([submittedAt])
 }
 
 model OnboardingBackup {
@@ -466,6 +480,7 @@ model OnboardingSession {
 }
 
 
+
 enum PropertyType {
   VILLA
   APARTMENT
@@ -538,6 +553,8 @@ enum OTAPlatform {
   VRBO
   EXPEDIA
   AGODA
+  HOTELS_COM
+  TRIPADVISOR
   MARRIOTT_HOMES_VILLAS
   HOMEAWAY
   FLIPKEY
@@ -643,27 +660,6 @@ enum DocumentType {
   MAINTENANCE_CONTRACTS
 }
 
-enum AgreementType {
-  PROPERTY_MANAGEMENT
-  OWNER_SERVICE
-  STAFF_EMPLOYMENT
-  MAINTENANCE_SERVICE
-  MARKETING
-  PARTNERSHIP
-  VENDOR_SERVICE
-  OTHER
-}
-
-enum AgreementStatus {
-  DRAFT
-  SENT
-  NEGOTIATING
-  SIGNED
-  ACTIVE
-  EXPIRED
-  TERMINATED
-  CANCELLED
-}
 
 enum FacilityCategory {
   // New frontend-matching categories (kebab-case)

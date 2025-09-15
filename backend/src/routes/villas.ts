@@ -5,6 +5,8 @@ import { simpleClerkAuth } from '../middleware/simpleClerkAuth';
 import { validateRequest } from '../middleware/validation';
 import { PrismaClient, VillaStatus } from '@prisma/client';
 import { BankDetailsService } from '../services/bankDetailsService';
+import { mediaService } from '../services/mediaService';
+import onboardingService from '../services/onboardingService';
 
 const router = Router();
 
@@ -595,25 +597,12 @@ router.put(
   authenticate,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      // Delegate to facilities service
-      const response = await fetch(`${process.env.INTERNAL_API_URL || 'http://localhost:4001'}/api/facilities/villa/${req.params.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': req.headers.authorization || ''
-        },
-        body: JSON.stringify(req.body)
-      });
-      
-      const data = await response.json();
-      
-      if (!response.ok) {
-        return res.status(response.status).json(data);
-      }
+      // Direct call to onboardingService instead of internal HTTP proxy
+      await onboardingService.updateStep(req.params.id, { step: 8, data: req.body, completed: true });
       
       res.json({
         success: true,
-        data: data.data,
+        data: req.body,
         message: 'Facilities updated successfully'
       });
     } catch (error) {
@@ -738,27 +727,28 @@ router.post(
   authenticate,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      // Delegate to photos service
-      const response = await fetch(`${process.env.INTERNAL_API_URL || 'http://localhost:4001'}/api/photos`, {
-        method: 'POST',
-        headers: {
-          'Authorization': req.headers.authorization || ''
-        },
-        body: JSON.stringify({
-          ...req.body,
-          villaId: req.params.id
-        })
-      });
+      // Direct call to mediaService instead of internal HTTP proxy
+      const photoData = {
+        ...req.body,
+        villaId: req.params.id
+      };
       
-      const data = await response.json();
-      
-      if (!response.ok) {
-        return res.status(response.status).json(data);
-      }
+      const result = await mediaService.uploadPhoto(
+        photoData.buffer || photoData.file,
+        photoData.filename || 'villa-photo.jpg',
+        photoData.mimeType || 'image/jpeg',
+        {
+          villaId: req.params.id,
+          category: photoData.category || 'INTERIOR',
+          tags: photoData.tags || [],
+          caption: photoData.caption,
+          altText: photoData.altText
+        }
+      );
       
       res.status(201).json({
         success: true,
-        data: data.data,
+        data: result,
         message: 'Photo uploaded successfully'
       });
     } catch (error) {
@@ -777,18 +767,14 @@ router.delete(
   authenticate,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      // Delegate to photos service
-      const response = await fetch(`${process.env.INTERNAL_API_URL || 'http://localhost:4001'}/api/photos/${req.params.photoId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': req.headers.authorization || ''
-        }
-      });
+      // Direct call to mediaService instead of internal HTTP proxy
+      const success = await mediaService.deletePhoto(req.params.photoId);
       
-      const data = await response.json();
-      
-      if (!response.ok) {
-        return res.status(response.status).json(data);
+      if (!success) {
+        return res.status(404).json({
+          success: false,
+          error: 'Photo not found'
+        });
       }
       
       res.json({

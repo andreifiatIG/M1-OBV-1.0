@@ -7,7 +7,6 @@ const prisma = new PrismaClient();
 
 export interface CreateVillaInput {
   villaName: string;
-  location: string;
   address: string;
   city: string;
   country: string;
@@ -25,7 +24,8 @@ export interface CreateVillaInput {
   villaStyle?: string;
   description?: string;
   shortDescription?: string;
-  tags?: string[];
+  propertyEmail?: string;
+  propertyWebsite?: string;
 }
 
 export interface UpdateVillaInput extends Partial<CreateVillaInput> {
@@ -61,7 +61,6 @@ class VillaService {
           villaCode,
           propertyType: data.propertyType as any,
           villaStyle: data.villaStyle as any,
-          tags: data.tags || [],
         },
         include: {
           owner: true,
@@ -92,7 +91,6 @@ class VillaService {
           data: {
             villaCode,
             villaName: data.name || 'New Villa',
-            location: 'TBD',
             address: 'TBD', 
             city: 'TBD',
             country: 'Indonesia',
@@ -263,7 +261,10 @@ class VillaService {
         where.isActive = filters.isActive;
       }
       if (filters.location) {
-        where.location = { contains: filters.location, mode: 'insensitive' };
+        where.OR = [
+          { city: { contains: filters.location, mode: 'insensitive' } },
+          { country: { contains: filters.location, mode: 'insensitive' } },
+        ];
       }
       if (filters.city) {
         where.city = { contains: filters.city, mode: 'insensitive' };
@@ -296,7 +297,8 @@ class VillaService {
         where.OR = [
           { villaName: { contains: filters.search, mode: 'insensitive' } },
           { villaCode: { contains: filters.search, mode: 'insensitive' } },
-          { location: { contains: filters.search, mode: 'insensitive' } },
+          { city: { contains: filters.search, mode: 'insensitive' } },
+          { country: { contains: filters.search, mode: 'insensitive' } },
           { description: { contains: filters.search, mode: 'insensitive' } },
         ];
       }
@@ -425,7 +427,7 @@ class VillaService {
           villaAddress: villa.address, // Map address to villaAddress
           villaCity: villa.city, // Map city to villaCity
           villaPostalCode: villa.zipCode, // Map zipCode to villaPostalCode
-          location: villa.location,
+          location: `${villa.city}, ${villa.country}`,
           address: villa.address,
           city: villa.city,
           country: villa.country,
@@ -445,7 +447,6 @@ class VillaService {
           villaStyle: villa.villaStyle,
           description: villa.description,
           shortDescription: villa.shortDescription,
-          tags: villa.tags,
           status: villa.status,
           isActive: villa.isActive,
           createdAt: villa.createdAt,
@@ -457,6 +458,8 @@ class VillaService {
           googleMapsLink: villa.googleMapsLink || null,
           oldRatesCardLink: villa.oldRatesCardLink || null,
           iCalCalendarLink: villa.iCalCalendarLink || null,
+          propertyEmail: (villa as any).propertyEmail || null,
+          propertyWebsite: (villa as any).propertyWebsite || null,
           
           // Missing fields from database mapping analysis
           // Add database fields that might be missing in frontend
@@ -532,11 +535,7 @@ class VillaService {
           managerName: villa.owner.managerName,
           managerPhone: villa.owner.managerPhone,
           managerPhoneCountryCode: villa.owner.managerPhoneCountryCode,
-          managerPhoneDialCode: villa.owner.managerPhoneDialCode,
-          
-          // Property details
-          propertyEmail: villa.owner.propertyEmail,
-          propertyWebsite: villa.owner.propertyWebsite
+          managerPhoneDialCode: villa.owner.managerPhoneDialCode
         } : null,
         contractualDetails: villa.contractualDetails || null,
         bankDetails: villa.bankDetails ? {
@@ -654,14 +653,14 @@ class VillaService {
           OR: [
             { villaName: { contains: query, mode: 'insensitive' } },
             { villaCode: { contains: query, mode: 'insensitive' } },
-            { location: { contains: query, mode: 'insensitive' } },
+            { city: { contains: query, mode: 'insensitive' } },
+            { country: { contains: query, mode: 'insensitive' } },
           ],
         },
         select: {
           id: true,
           villaCode: true,
           villaName: true,
-          location: true,
           city: true,
         },
         take: limit,

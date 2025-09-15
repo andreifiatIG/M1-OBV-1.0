@@ -106,7 +106,7 @@ export class DataSyncManager {
     this.notifySyncStatus({ syncing: true, success: false });
 
     try {
-      console.log('🔄 Syncing villa profile for villa:', villaId);
+      console.log('Syncing villa profile for villa:', villaId);
       
       // Get both villa details and onboarding progress
       const [villaResponse, onboardingResponse] = await Promise.all([
@@ -150,7 +150,7 @@ export class DataSyncManager {
           await this.api.updateVilla(villaId, syncUpdates);
         }
 
-        console.log('✅ Villa profile synced successfully');
+        console.log('Villa profile synced successfully');
         this.notifySyncStatus({ 
           syncing: false, 
           success: true, 
@@ -161,7 +161,7 @@ export class DataSyncManager {
         throw new Error('Failed to fetch villa or onboarding data');
       }
     } catch (error) {
-      console.error('❌ Failed to sync villa profile:', error);
+      console.error('Failed to sync villa profile:', error);
       this.notifySyncStatus({ 
         syncing: false, 
         success: false, 
@@ -178,7 +178,7 @@ export class DataSyncManager {
     this.notifySyncStatus({ syncing: true, success: false });
 
     try {
-      console.log('🔄 Syncing owner data for villa:', villaId);
+      console.log('Syncing owner data for villa:', villaId);
       
       // Get onboarding data which might have more recent owner info
       const onboardingResponse = await this.api.getOnboardingProgress(villaId);
@@ -201,7 +201,7 @@ export class DataSyncManager {
             updatedAt: new Date().toISOString(),
           };
 
-          console.log('✅ Owner data synced successfully');
+          console.log('Owner data synced successfully');
           this.notifySyncStatus({ 
             syncing: false, 
             success: true, 
@@ -214,7 +214,7 @@ export class DataSyncManager {
       
       throw new Error('No owner data found in onboarding session');
     } catch (error) {
-      console.error('❌ Failed to sync owner data:', error);
+      console.error('Failed to sync owner data:', error);
       this.notifySyncStatus({ 
         syncing: false, 
         success: false, 
@@ -232,7 +232,7 @@ export class DataSyncManager {
     owner: OwnerData | null;
     profileSynced: boolean;
   }> {
-    console.log('🔄 Starting complete data sync for villa:', villaId);
+    console.log('Starting complete data sync for villa:', villaId);
     
     const [progress, owner, profileSynced] = await Promise.all([
       this.syncOnboardingProgress(villaId),
@@ -240,7 +240,7 @@ export class DataSyncManager {
       this.syncVillaProfile(villaId)
     ]);
 
-    console.log('✅ Complete data sync finished for villa:', villaId);
+    console.log('Complete data sync finished for villa:', villaId);
     
     return {
       progress,
@@ -256,7 +256,7 @@ export class DataSyncManager {
     this.notifySyncStatus({ syncing: true, success: false });
 
     try {
-      console.log('🔄 Fixing staff and documents visibility for villa:', villaId);
+      console.log('Fixing staff and documents visibility for villa:', villaId);
       
       const onboardingResponse = await this.api.getOnboardingProgress(villaId);
       
@@ -291,7 +291,7 @@ export class DataSyncManager {
           updatedAt: new Date().toISOString()
         });
 
-        console.log('✅ Staff and documents visibility fixed');
+        console.log('Staff and documents visibility fixed');
         this.notifySyncStatus({ 
           syncing: false, 
           success: true, 
@@ -303,7 +303,7 @@ export class DataSyncManager {
       
       throw new Error('Failed to get onboarding progress');
     } catch (error) {
-      console.error('❌ Failed to fix staff and documents visibility:', error);
+      console.error('Failed to fix staff and documents visibility:', error);
       this.notifySyncStatus({ 
         syncing: false, 
         success: false, 

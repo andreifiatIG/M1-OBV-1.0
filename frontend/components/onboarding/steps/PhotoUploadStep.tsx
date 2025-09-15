@@ -489,7 +489,7 @@ const PhotoUploadStep = forwardRef<StepHandle, PhotoUploadStepProps>((
       }, 30000); // 30 second timeout
       
       try {
-        response = await fetch(`${API_URL}/api/photos/upload-sharepoint`, {
+        response = await fetch(`${API_URL}/api/photos-enhanced`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -535,13 +535,13 @@ const PhotoUploadStep = forwardRef<StepHandle, PhotoUploadStepProps>((
         file: null, // File already uploaded, don't store locally
         category: selectedCategory,
         subfolder: selectedSubfolder || undefined,
-        preview: `${API_URL}/api/photos/public/${photo.id}?t=${Date.now()}`, // Use public endpoint for image tags (no auth required)
+        preview: `${API_URL}/api/photos-enhanced/public/${photo.id}?t=${Date.now()}`, // Use enhanced public endpoint for image tags (no auth required)
         uploaded: true,
         sharePointId: photo.sharePointFileId,
         sharePointPath: photo.sharePointPath,
         fileName: photo.fileName,
         fileUrl: photo.fileUrl,
-        thumbnailUrl: `${API_URL}/api/photos/serve/${photo.id}?thumbnail=true&t=${Date.now()}`, // Use serve endpoint for thumbnail with timestamp
+        thumbnailUrl: `${API_URL}/api/photos-enhanced/thumbnail/${photo.id}?t=${Date.now()}`, // Use enhanced thumbnail endpoint with timestamp
       }));
 
       const updatedPhotos = [...photos, ...newPhotos];
@@ -621,7 +621,7 @@ const PhotoUploadStep = forwardRef<StepHandle, PhotoUploadStepProps>((
         let response: Response;
         
         try {
-          response = await fetch(`${API_URL}/api/photos/${photoToRemove.id}`, {
+          response = await fetch(`${API_URL}/api/photos-enhanced/${photoToRemove.id}`, {
             method: 'DELETE',
             headers: {
               'Authorization': `Bearer ${token}`,
@@ -719,7 +719,7 @@ const PhotoUploadStep = forwardRef<StepHandle, PhotoUploadStepProps>((
         let response: Response;
         
         try {
-          response = await fetch(`${API_URL}/api/photos/${photo.id}`, {
+          response = await fetch(`${API_URL}/api/photos-enhanced/${photo.id}`, {
             method: 'DELETE',
             headers: {
               'Authorization': `Bearer ${token}`,
@@ -867,15 +867,15 @@ const PhotoUploadStep = forwardRef<StepHandle, PhotoUploadStepProps>((
                       if (!target.src.includes('data:image/svg')) {
                         console.warn('Failed to load image:', target.src);
                         
-                        // Try different endpoints in order: public -> serve -> placeholder (skip auth endpoints)
-                        const publicUrl = `${API_URL}/api/photos/public/${photo.id}?t=${Date.now()}`;
-                        const serveUrl = `${API_URL}/api/photos/serve/${photo.id}?t=${Date.now()}`;
+                        // Try different endpoints in order: public -> thumbnail -> placeholder (enhanced routes)
+                        const publicUrl = `${API_URL}/api/photos-enhanced/public/${photo.id}?t=${Date.now()}`;
+                        const thumbnailUrl = `${API_URL}/api/photos-enhanced/thumbnail/${photo.id}?t=${Date.now()}`;
                         
-                        if (target.src.includes('/api/photos/public/')) {
-                          // Public URL failed, try serve URL
-                          console.log('Public URL failed, trying serve URL');
-                          target.src = serveUrl;
-                        } else if (target.src.includes('/api/photos/serve/')) {
+                        if (target.src.includes('/api/photos-enhanced/public/')) {
+                          // Enhanced public URL failed, try thumbnail URL
+                          console.log('📸 [IMG-ERROR] Enhanced public URL failed, trying thumbnail URL for photo:', photo.id);
+                          target.src = thumbnailUrl;
+                        } else if (target.src.includes('/api/photos-enhanced/thumbnail/')) {
                           // Serve URL failed, use placeholder
                           console.log('All public URLs failed, using placeholder');
                           const svgPlaceholder = 'data:image/svg+xml,' + encodeURIComponent(`

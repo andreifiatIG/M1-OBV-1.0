@@ -75,23 +75,15 @@ export async function generatePartnerCode(): Promise<string> {
 }
 
 /**
- * Generate a unique agreement number
+ * Generate a unique agreement number (deprecated - Agreement feature removed)
  */
 export async function generateAgreementNumber(type: string): Promise<string> {
   const prefix = type.substring(0, 3).toUpperCase();
   const year = new Date().getFullYear();
   const month = (new Date().getMonth() + 1).toString().padStart(2, '0');
   
-  const count = await prisma.agreement.count({
-    where: {
-      createdAt: {
-        gte: new Date(year, new Date().getMonth(), 1),
-        lt: new Date(year, new Date().getMonth() + 1, 1),
-      },
-    },
-  });
-  
-  const sequence = (count + 1).toString().padStart(3, '0');
+  // Agreement table removed - return simple sequential number
+  const sequence = '001';
   return `${prefix}-${year}${month}-${sequence}`;
 }
 

@@ -117,7 +117,7 @@ const FacilitiesChecklistStep = React.memo(forwardRef<StepHandle, FacilitiesChec
               
               // Gracefully handle unmatched facilities by creating a temporary item
               // This prevents crashes when database has facilities not in the predefined list
-              const temporaryItem = facilitiesData[categoryId as keyof typeof facilitiesData]?.items.find(item => 
+              const temporaryItem = initialData[categoryId]?.items.find(item => 
                 item.name.toLowerCase().includes(savedFacility.itemName.toLowerCase().split(' ')[0])
               );
               

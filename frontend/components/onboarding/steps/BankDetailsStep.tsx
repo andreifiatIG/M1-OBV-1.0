@@ -12,16 +12,16 @@ interface BankDetailsStepProps {
 }
 
 const defaultFormData = {
-  accountName: '',
+  accountHolderName: '',    // Maps to accountHolderName in DB (was accountName)
   bankName: '',
-  swiftBicCode: '',
-  bankAccountNumber: '',
+  swiftCode: '',           // Maps to swiftCode in DB (was swiftBicCode)
+  accountNumber: '',       // Maps to accountNumber in DB (was bankAccountNumber)
   iban: '',
-  bankBranch: '',
+  branchName: '',          // Maps to branchName in DB (was bankBranch)
   bankAddress: '',
   branchCode: '',
   bankCountry: '',
-  currency: 'IDR',
+  currency: 'USD',         // Default to USD to match DB default
   accountType: 'CHECKING',
 };
 
@@ -56,7 +56,7 @@ const BankDetailsStep = forwardRef<StepHandle, BankDetailsStepProps>((
     validate: validateForm,
     getData: () => ({
       ...formData,
-      swiftBicCode: formData.swiftBicCode.toUpperCase(),
+      swiftCode: formData.swiftCode.toUpperCase(),
     }),
   }));
 
@@ -110,19 +110,19 @@ const BankDetailsStep = forwardRef<StepHandle, BankDetailsStepProps>((
           <div className="grid grid-cols-1 gap-6">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">
-                Account Name *
+                Account Holder Name *
               </label>
               <input
                 type="text"
-                value={formData.accountName}
-                onChange={(e) => handleInputChange('accountName', e.target.value)}
+                value={formData.accountHolderName}
+                onChange={(e) => handleInputChange('accountHolderName', e.target.value)}
                 placeholder="Full name of account holder"
                 className={`w-full px-4 py-3 bg-white/60 backdrop-filter backdrop-blur-10 border rounded-lg text-slate-800 placeholder-slate-500/80 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white/80 transition-all duration-200 ${
-                  errors.accountName ? 'border-red-500 bg-red-50/60' : 'border-teal-400/40'
+                  errors.accountHolderName ? 'border-red-500 bg-red-50/60' : 'border-teal-400/40'
                 }`}
               />
-              {errors.accountName && (
-                <p className="text-red-400 text-sm mt-1">{errors.accountName}</p>
+              {errors.accountHolderName && (
+                <p className="text-red-400 text-sm mt-1">{errors.accountHolderName}</p>
               )}
             </div>
 
@@ -151,16 +151,16 @@ const BankDetailsStep = forwardRef<StepHandle, BankDetailsStepProps>((
                 </label>
                 <input
                   type="text"
-                  value={formData.swiftBicCode}
-                  onChange={(e) => handleInputChange('swiftBicCode', e.target.value.toUpperCase())}
+                  value={formData.swiftCode}
+                  onChange={(e) => handleInputChange('swiftCode', e.target.value.toUpperCase())}
                   placeholder="e.g. BKKBTHBK"
                   maxLength={11}
                   className={`w-full px-4 py-3 bg-white/60 backdrop-filter backdrop-blur-10 border rounded-lg text-slate-800 placeholder-slate-500/80 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white/80 transition-all duration-200 font-mono ${
-                    errors.swiftBicCode ? 'border-red-500 bg-red-50/60' : 'border-teal-400/40'
+                    errors.swiftCode ? 'border-red-500 bg-red-50/60' : 'border-teal-400/40'
                   }`}
                 />
-                {errors.swiftBicCode && (
-                  <p className="text-red-400 text-sm mt-1">{errors.swiftBicCode}</p>
+                {errors.swiftCode && (
+                  <p className="text-red-400 text-sm mt-1">{errors.swiftCode}</p>
                 )}
                 <p className="text-slate-500 text-xs mt-1">8 or 11 character international bank code</p>
               </div>
@@ -173,11 +173,11 @@ const BankDetailsStep = forwardRef<StepHandle, BankDetailsStepProps>((
               <div className="relative">
                 <input
                   type={showAccountNumber ? "text" : "password"}
-                  value={formData.bankAccountNumber}
-                  onChange={(e) => handleInputChange('bankAccountNumber', e.target.value)}
+                  value={formData.accountNumber}
+                  onChange={(e) => handleInputChange('accountNumber', e.target.value)}
                   placeholder="Bank account number"
                   className={`w-full px-4 py-3 pr-12 bg-white/60 backdrop-filter backdrop-blur-10 border rounded-lg text-slate-800 placeholder-slate-500/80 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white/80 transition-all duration-200 font-mono ${
-                    errors.bankAccountNumber ? 'border-red-500 bg-red-50/60' : 'border-teal-400/40'
+                    errors.accountNumber ? 'border-red-500 bg-red-50/60' : 'border-teal-400/40'
                   }`}
                 />
                 <button
@@ -192,12 +192,12 @@ const BankDetailsStep = forwardRef<StepHandle, BankDetailsStepProps>((
                   )}
                 </button>
               </div>
-              {errors.bankAccountNumber && (
-                <p className="text-red-400 text-sm mt-1">{errors.bankAccountNumber}</p>
+              {errors.accountNumber && (
+                <p className="text-red-400 text-sm mt-1">{errors.accountNumber}</p>
               )}
-              {!showAccountNumber && formData.bankAccountNumber && (
+              {!showAccountNumber && formData.accountNumber && (
                 <p className="text-slate-500 text-xs mt-1">
-                  Preview: {maskAccountNumber(formData.bankAccountNumber)}
+                  Preview: {maskAccountNumber(formData.accountNumber)}
                 </p>
               )}
             </div>
@@ -281,15 +281,15 @@ const BankDetailsStep = forwardRef<StepHandle, BankDetailsStepProps>((
                 </label>
                 <input
                   type="text"
-                  value={formData.bankBranch}
-                  onChange={(e) => handleInputChange('bankBranch', e.target.value)}
+                  value={formData.branchName}
+                  onChange={(e) => handleInputChange('branchName', e.target.value)}
                   placeholder="Branch name or location"
                   className={`w-full px-4 py-3 bg-white/60 backdrop-filter backdrop-blur-10 border rounded-lg text-slate-800 placeholder-slate-500/80 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white/80 transition-all duration-200 ${
-                    errors.bankBranch ? 'border-red-500 bg-red-50/60' : 'border-teal-400/40'
+                    errors.branchName ? 'border-red-500 bg-red-50/60' : 'border-teal-400/40'
                   }`}
                 />
-                {errors.bankBranch && (
-                  <p className="text-red-400 text-sm mt-1">{errors.bankBranch}</p>
+                {errors.branchName && (
+                  <p className="text-red-400 text-sm mt-1">{errors.branchName}</p>
                 )}
               </div>
 

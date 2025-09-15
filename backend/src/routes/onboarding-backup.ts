@@ -18,7 +18,7 @@ const BackupDataSchema = z.object({
 });
 
 // Create or update backup
-router.post('/backup', backupRateLimit, authenticate, async (req, res) => {
+router.post('/', backupRateLimit, authenticate, async (req, res) => {
   try {
     const validatedData = BackupDataSchema.parse(req.body);
     const userId = (req as any).user.id;
@@ -82,7 +82,7 @@ router.post('/backup', backupRateLimit, authenticate, async (req, res) => {
 });
 
 // Get latest backup for user
-router.get('/backup/latest', authenticate, async (req, res) => {
+router.get('/latest', authenticate, async (req, res) => {
   try {
     const userId = (req as any).user.id;
 
@@ -120,7 +120,7 @@ router.get('/backup/latest', authenticate, async (req, res) => {
 });
 
 // Get backup by villa ID
-router.get('/backup/:villaId', authenticate, async (req, res) => {
+router.get('/:villaId', authenticate, async (req, res) => {
   try {
     const userId = (req as any).user.id;
     const { villaId } = req.params;
@@ -179,7 +179,7 @@ router.get('/backup/:villaId', authenticate, async (req, res) => {
 });
 
 // Delete backup by villa ID
-router.delete('/backup/:villaId', authenticate, async (req, res) => {
+router.delete('/:villaId', authenticate, async (req, res) => {
   try {
     const userId = (req as any).user.id;
     const { villaId } = req.params;
@@ -206,7 +206,7 @@ router.delete('/backup/:villaId', authenticate, async (req, res) => {
 });
 
 // Delete all backups for user
-router.delete('/backup', authenticate, async (req, res) => {
+router.delete('/', authenticate, async (req, res) => {
   try {
     const userId = (req as any).user.id;
 
@@ -229,7 +229,7 @@ router.delete('/backup', authenticate, async (req, res) => {
 });
 
 // Get user's backup history
-router.get('/backups', authenticate, async (req, res) => {
+router.get('/all', authenticate, async (req, res) => {
   try {
     const userId = (req as any).user.id;
     const limit = parseInt(req.query.limit as string) || 10;
@@ -284,7 +284,7 @@ router.get('/backups', authenticate, async (req, res) => {
 });
 
 // Cleanup old backups (admin/cron job)
-router.delete('/backups/cleanup', authenticate, async (req, res) => {
+router.delete('/cleanup', authenticate, async (req, res) => {
   try {
     // Only allow admins to run cleanup
     const user = (req as any).user;

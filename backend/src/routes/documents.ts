@@ -266,7 +266,7 @@ router.post(
 
       if (!villa) {
         // Clean up uploaded files
-        files.forEach(file => deleteFile(file.filename, 'document'));
+        files.forEach(file => deleteFile(file.originalname, 'document'));
         return res.status(400).json({ error: 'Villa not found' });
       }
 
@@ -274,7 +274,7 @@ router.post(
       const documentPromises = files.map(async (file) => {
         const fileInfo = getFileInfo(file);
         let sharePointResult = null;
-        let fileUrl = getFileUrl(fileInfo.filename, 'document');
+        let fileUrl = getFileUrl(fileInfo.originalName, 'document');
         
         try {
           // Check if SharePoint service is available
@@ -285,7 +285,7 @@ router.post(
             sharePointResult = await sharePointService.uploadDocument(
               villaId,
               documentType,
-              fileInfo.filename,
+              fileInfo.originalName,
               fileBuffer,
               fileInfo.mimetype,
               {
@@ -313,7 +313,7 @@ router.post(
           data: {
             villaId,
             documentType: documentType as any,
-            fileName: fileInfo.filename,
+            fileName: fileInfo.originalName,
             fileUrl,
             fileSize: fileInfo.size,
             mimeType: fileInfo.mimetype,
@@ -371,7 +371,7 @@ router.post(
       // Clean up uploaded files on error
       const files = req.files as Express.Multer.File[];
       if (files) {
-        files.forEach(file => deleteFile(file.filename, 'document'));
+        files.forEach(file => deleteFile(file.originalname, 'document'));
       }
       
       logger.error('Error uploading documents:', error);
@@ -921,7 +921,9 @@ router.post(
             }
             
             logger.error(`[SP-FAIL] SharePoint upload failed for ${file.originalname}:`, sharePointError);
-            throw new Error(`Both database and SharePoint storage failed. DB: ${error?.message}, SP: ${sharePointError.message}`);
+            const spError = sharePointError instanceof Error ? sharePointError.message : String(sharePointError);
+            const dbError = error instanceof Error ? error.message : String(error);
+            throw new Error(`Both database and SharePoint storage failed. DB: ${dbError}, SP: ${spError}`);
           }
         } catch (fallbackError) {
           logger.error(`[UPLOAD-FAIL] All storage methods failed for ${file.originalname}:`, fallbackError);
@@ -974,7 +976,7 @@ router.post(
         documents: documents.map(doc => ({
           ...doc,
           // Ensure all documents have proper file URLs for frontend
-          fileUrl: doc.fileUrl || (doc.storageMethod === 'database' ? getFileUrl(doc.fileId, 'document') : doc.filePath)
+          fileUrl: doc.fileUrl || (doc.storageMethod === 'database' ? getFileUrl(doc.fileId, 'document') : doc.fileUrl)
         })),
         storageStats,
         sharePointFolder: sharePointFolder,
@@ -1041,12 +1043,14 @@ router.get('/sharepoint/:villaId', authMiddleware, async (req: Request, res: Res
         '05-Maintenance-Records'
       ];
       
-      let folderContents = { value: [] };
+      let folderContents: any[] = [];
       for (const folder of documentFolders) {
         try {
-          const contents = await sharePointService.listFiles(`${sharePointPath}/${folder}`);
-          if (contents.value) {
-            folderContents.value.push(...contents.value);
+          const contents = await sharePointService.listFiles(`${sharePointPath}/${folder}`) as any;
+          if (Array.isArray(contents)) {
+            folderContents.push(...contents);
+          } else if (contents && Array.isArray(contents.value)) {
+            folderContents.push(...contents.value);
           }
         } catch (error) {
           logger.warn(`Could not list files in ${folder}:`, error);
@@ -1055,7 +1059,7 @@ router.get('/sharepoint/:villaId', authMiddleware, async (req: Request, res: Res
       
       res.json({
         documents,
-        sharePointFiles: folderContents,
+        sharePointFiles: { value: folderContents },
         summary: {
           databaseDocuments: documents.length,
           sharePointFiles: folderContents.length,

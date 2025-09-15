@@ -231,7 +231,9 @@ const InternationalPhoneInputFixed: React.FC<InternationalPhoneInputProps> = ({
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCountry, setSelectedCountry] = useState<Country>(COUNTRIES[0]);
+  const [selectedCountry, setSelectedCountry] = useState<Country>(() => 
+    COUNTRIES.find(country => country.code === 'TH') || COUNTRIES[0]
+  );
   const [localNumber, setLocalNumber] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -243,7 +245,7 @@ const InternationalPhoneInputFixed: React.FC<InternationalPhoneInputProps> = ({
     }
 
     // Find matching country by dial code
-    let foundCountry = COUNTRIES[0];
+    let foundCountry = COUNTRIES.find(country => country.code === 'TH') || COUNTRIES[0];
     let number = value;
 
     for (const country of COUNTRIES) {

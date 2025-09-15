@@ -114,9 +114,6 @@ const defaultFormData = {
   managerPhoneCountryCode: "US", // Changed from villaManagerPhoneCountryCode
   managerPhoneDialCode: "+1", // Changed from villaManagerPhoneDialCode
   
-  // Property contact info (already matches DB)
-  propertyEmail: "",
-  propertyWebsite: "",
 };
 
 const OwnerDetailsStep = React.memo(forwardRef<StepHandle, OwnerDetailsStepProps>((
@@ -696,7 +693,7 @@ const OwnerDetailsStep = React.memo(forwardRef<StepHandle, OwnerDetailsStepProps
                   }}
                   className="w-full px-4 py-3 bg-white/60 backdrop-filter backdrop-blur-10 border border-teal-400/40 rounded-lg text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white/80 transition-all duration-200 flex items-center justify-between"
                 >
-                  <span className={formData.nationality ? 'text-slate-800' : 'text-slate-500/80'}>
+                  <span className="text-slate-800">
                     {formData.nationality || 'Select nationality'}
                   </span>
                   <ChevronDown className={`w-4 h-4 text-slate-500 transition-transform ${nationalitySearchOpen ? 'rotate-180' : ''}`} />
@@ -775,12 +772,72 @@ const OwnerDetailsStep = React.memo(forwardRef<StepHandle, OwnerDetailsStepProps
                 className="w-full px-4 py-3 bg-white/60 backdrop-filter backdrop-blur-10 border border-teal-400/40 rounded-lg text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white/80 transition-all duration-200"
               >
                 <option value="en">English</option>
-                <option value="es">Spanish</option>
-                <option value="fr">French</option>
-                <option value="de">German</option>
-                <option value="it">Italian</option>
-                <option value="pt">Portuguese</option>
-                <option value="ar">Arabic</option>
+                <option value="th">Thai (ไทย)</option>
+                <option value="zh">Chinese (中文)</option>
+                <option value="es">Spanish (Español)</option>
+                <option value="hi">Hindi (हिन्दी)</option>
+                <option value="ar">Arabic (العربية)</option>
+                <option value="pt">Portuguese (Português)</option>
+                <option value="bn">Bengali (বাংলা)</option>
+                <option value="ru">Russian (Русский)</option>
+                <option value="ja">Japanese (日本語)</option>
+                <option value="pa">Punjabi (ਪੰਜਾਬੀ)</option>
+                <option value="de">German (Deutsch)</option>
+                <option value="jv">Javanese</option>
+                <option value="wu">Wu Chinese</option>
+                <option value="ms">Malay (Bahasa Melayu)</option>
+                <option value="te">Telugu (తెలుగు)</option>
+                <option value="vi">Vietnamese (Tiếng Việt)</option>
+                <option value="ko">Korean (한국어)</option>
+                <option value="fr">French (Français)</option>
+                <option value="mr">Marathi (मराठी)</option>
+                <option value="ta">Tamil (தமிழ்)</option>
+                <option value="ur">Urdu (اردو)</option>
+                <option value="gu">Gujarati (ગુજરાતી)</option>
+                <option value="pl">Polish (Polski)</option>
+                <option value="uk">Ukrainian (Українська)</option>
+                <option value="fa">Persian (فارسی)</option>
+                <option value="kn">Kannada (ಕನ್ನಡ)</option>
+                <option value="ml">Malayalam (മലയാളം)</option>
+                <option value="or">Odia (ଓଡ଼ିଆ)</option>
+                <option value="my">Burmese (မြန်မာ)</option>
+                <option value="az">Azerbaijani</option>
+                <option value="uz">Uzbek</option>
+                <option value="sd">Sindhi</option>
+                <option value="am">Amharic</option>
+                <option value="nl">Dutch (Nederlands)</option>
+                <option value="sr">Serbian (Српски)</option>
+                <option value="ro">Romanian (Română)</option>
+                <option value="rw">Kinyarwanda</option>
+                <option value="si">Sinhala (සිංහල)</option>
+                <option value="km">Khmer (ភាសាខ្មែរ)</option>
+                <option value="tk">Turkmen</option>
+                <option value="ne">Nepali (नेपाली)</option>
+                <option value="hu">Hungarian (Magyar)</option>
+                <option value="be">Belarusian</option>
+                <option value="da">Danish (Dansk)</option>
+                <option value="fi">Finnish (Suomi)</option>
+                <option value="no">Norwegian (Norsk)</option>
+                <option value="sk">Slovak (Slovenčina)</option>
+                <option value="bg">Bulgarian (Български)</option>
+                <option value="hr">Croatian (Hrvatski)</option>
+                <option value="cs">Czech (Čeština)</option>
+                <option value="he">Hebrew (עברית)</option>
+                <option value="el">Greek (Ελληνικά)</option>
+                <option value="sv">Swedish (Svenska)</option>
+                <option value="ca">Catalan (Català)</option>
+                <option value="lt">Lithuanian (Lietuvių)</option>
+                <option value="sl">Slovenian (Slovenščina)</option>
+                <option value="lv">Latvian (Latviešu)</option>
+                <option value="et">Estonian (Eesti)</option>
+                <option value="ga">Irish (Gaeilge)</option>
+                <option value="mt">Maltese (Malti)</option>
+                <option value="is">Icelandic (Íslenska)</option>
+                <option value="cy">Welsh (Cymraeg)</option>
+                <option value="eu">Basque (Euskera)</option>
+                <option value="lb">Luxembourgish</option>
+                <option value="fo">Faroese</option>
+                <option value="kl">Greenlandic</option>
               </select>
             </div>
 
@@ -857,31 +914,6 @@ const OwnerDetailsStep = React.memo(forwardRef<StepHandle, OwnerDetailsStepProps
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">
-                Property Email
-              </label>
-              <input
-                type="email"
-                value={formData.propertyEmail}
-                onChange={(e) => handleInputChange('propertyEmail', e.target.value)}
-                placeholder="property@example.com"
-                className="w-full px-4 py-3 bg-white/60 backdrop-filter backdrop-blur-10 border border-teal-400/40 rounded-lg text-slate-800 placeholder-slate-500/80 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white/80 transition-all duration-200"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">
-                Property Website
-              </label>
-              <input
-                type="url"
-                value={formData.propertyWebsite}
-                onChange={(e) => handleInputChange('propertyWebsite', e.target.value)}
-                placeholder="https://property-website.com"
-                className="w-full px-4 py-3 bg-white/60 backdrop-filter backdrop-blur-10 border border-teal-400/40 rounded-lg text-slate-800 placeholder-slate-500/80 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white/80 transition-all duration-200"
-              />
-            </div>
           </div>
         </div>
       </div>

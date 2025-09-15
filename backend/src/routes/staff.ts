@@ -173,9 +173,9 @@ router.get('/:id', authMiddleware, async (req: Request, res: Response) => {
         villa: {
           select: {
             id: true,
-            villaName: true,
             villaCode: true,
-            location: true,
+            villaName: true,
+            city: true,
           },
         },
       },

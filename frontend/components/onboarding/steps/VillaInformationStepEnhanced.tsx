@@ -35,6 +35,9 @@ const defaultFormData = {
   villaStyle: '',
   description: '',
   shortDescription: '',
+  // Contact information
+  propertyEmail: '',
+  propertyWebsite: '',
 };
 
 const VillaInformationStepEnhanced = React.memo(forwardRef<StepHandle, VillaInformationStepProps>((
@@ -145,14 +148,21 @@ const VillaInformationStepEnhanced = React.memo(forwardRef<StepHandle, VillaInfo
     return Object.keys(newErrors).length === 0;
   }, [formData]);
 
-  const processedData = useMemo(() => ({
-    ...formData,
-    bedrooms: Number(formData.bedrooms) || 0,
-    bathrooms: Number(formData.bathrooms) || 0,
-    maxGuests: Number(formData.maxGuests) || 0,
-    landArea: Number(formData.landArea) || 0,
-    villaArea: Number(formData.villaArea) || 0,
-  }), [formData]);
+  const processedData = useMemo(() => {
+    const numOrUndef = (v: any) => {
+      if (v === '' || v === null || v === undefined) return undefined;
+      const n = Number(v);
+      return Number.isFinite(n) ? n : undefined;
+    };
+    return {
+      ...formData,
+      bedrooms: numOrUndef(formData.bedrooms),
+      bathrooms: numOrUndef(formData.bathrooms),
+      maxGuests: numOrUndef(formData.maxGuests),
+      landArea: numOrUndef(formData.landArea),
+      villaArea: numOrUndef(formData.villaArea),
+    };
+  }, [formData]);
 
   useImperativeHandle(ref, () => ({
     validate: validateForm,
@@ -499,6 +509,44 @@ const VillaInformationStepEnhanced = React.memo(forwardRef<StepHandle, VillaInfo
               />
               <p className="text-xs text-slate-500 mt-1">
                 Describe the villa's features, location highlights, and what makes it special
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Contact Information Section */}
+        <div className="glass-card-white-teal p-6">
+          <h3 className="text-lg font-semibold text-slate-800 mb-4">Contact Information</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                Property Email
+              </label>
+              <input
+                type="email"
+                value={formData.propertyEmail}
+                onChange={(e) => handleInputChange('propertyEmail', e.target.value)}
+                placeholder="info@villa-name.com"
+                className="w-full px-4 py-3 form-input-white-teal"
+              />
+              <p className="text-xs text-slate-500 mt-1">
+                Primary email for guest inquiries and booking communications
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                Property Website
+              </label>
+              <input
+                type="url"
+                value={formData.propertyWebsite}
+                onChange={(e) => handleInputChange('propertyWebsite', e.target.value)}
+                placeholder="https://www.villa-name.com"
+                className="w-full px-4 py-3 form-input-white-teal"
+              />
+              <p className="text-xs text-slate-500 mt-1">
+                Official villa website or booking page
               </p>
             </div>
           </div>

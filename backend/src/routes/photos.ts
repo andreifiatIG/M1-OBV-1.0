@@ -450,7 +450,7 @@ router.post(
 
       if (!villa) {
         // Clean up uploaded files
-        files.forEach(file => deleteFile(file.filename, 'photo'));
+        files.forEach(file => deleteFile(file.originalname, 'photo'));
         return res.status(400).json({ error: 'Villa not found' });
       }
 
@@ -464,8 +464,8 @@ router.post(
           data: {
             villaId,
             category: category as any,
-            fileName: fileInfo.filename,
-            fileUrl: getFileUrl(fileInfo.filename, 'photo'),
+            fileName: fileInfo.originalName,
+            fileUrl: getFileUrl(fileInfo.originalName, 'photo'),
             fileSize: fileInfo.size,
             mimeType: fileInfo.mimetype,
             tags: parsedTags,
@@ -494,7 +494,7 @@ router.post(
       // Clean up uploaded files on error
       const files = req.files as Express.Multer.File[];
       if (files) {
-        files.forEach(file => deleteFile(file.filename, 'photo'));
+        files.forEach(file => deleteFile(file.originalname, 'photo'));
       }
       
       logger.error('Error uploading photos:', error);
@@ -875,10 +875,10 @@ router.post(
           try {
             // Upload to SharePoint
             sharePointResult = await sharePointService.uploadFile(
-              tempFilePath,
-              villaId,
-              sharePointFolder,
+              file.buffer,
               file.originalname,
+              sharePointFolder,
+              villaId,
               file.mimetype
             );
 
@@ -941,7 +941,9 @@ router.post(
             }
             
             logger.error(`[SP-FAIL] SharePoint upload failed for photo ${file.originalname}:`, sharePointError);
-            throw new Error(`Both database and SharePoint storage failed. DB: ${error?.message}, SP: ${sharePointError.message}`);
+            const spError = sharePointError instanceof Error ? sharePointError.message : String(sharePointError);
+            const dbErrorMessage = error instanceof Error ? error.message : String(error);
+            throw new Error(`Both database and SharePoint storage failed. DB: ${dbErrorMessage}, SP: ${spError}`);
           }
         } catch (fallbackError) {
           logger.error(`[UPLOAD-FAIL] All storage methods failed for photo ${file.originalname}:`, fallbackError);
@@ -1129,8 +1131,8 @@ router.post(
           logger.info(`[FACILITY-DB] Attempting database storage for: ${facilityFileName}`);
           
           const databaseResult = await databaseFileStorageService.storePhoto(
-            file.buffer,
             facilityFileName,
+            file.buffer,
             file.mimetype,
             villaId,
             'AMENITIES_FACILITIES',
@@ -1187,10 +1189,10 @@ router.post(
 
             // Upload to SharePoint
             const sharePointResult = await sharePointService.uploadFile(
-              tempFilePath,
-              villaId,
-              facilityFolder,
+              file.buffer,
               facilityFileName,
+              facilityFolder,
+              villaId,
               file.mimetype
             );
 
@@ -1242,7 +1244,9 @@ router.post(
 
           } catch (sharePointError) {
             logger.error(`[FACILITY-FAIL] Both storage methods failed for ${facilityFileName}:`, sharePointError);
-            throw new Error(`All storage methods failed. DB: ${databaseError?.message}, SP: ${sharePointError.message}`);
+            const spError = sharePointError instanceof Error ? sharePointError.message : String(sharePointError);
+            const dbError = databaseError instanceof Error ? databaseError.message : String(databaseError);
+            throw new Error(`All storage methods failed. DB: ${dbError}, SP: ${spError}`);
           }
         }
       });
@@ -1426,82 +1430,8 @@ router.get('/stats', authMiddleware, async (req: Request, res: Response) => {
   }
 });
 
-// GET /api/photos/proxy/:photoId - Proxy SharePoint images with authentication
-router.get('/proxy/:photoId', authMiddleware, async (req: Request, res: Response) => {
-  try {
-    const { photoId } = req.params;
-    
-    // Get photo from database
-    const photo = await prisma.photo.findUnique({
-      where: { id: photoId }
-    });
-    
-    if (!photo) {
-      return res.status(404).json({ error: 'Photo not found' });
-    }
-    
-    if (!photo.fileUrl) {
-      return res.status(404).json({ error: 'Photo URL not available' });
-    }
-    
-    try {
-      // Check if we have a SharePoint file ID to download with  
-      if (photo.sharePointFileId) {
-        try {
-          const downloadResult = await sharePointService.downloadDocument(photo.sharePointFileId);
-          const buffer = Buffer.from(downloadResult.content);
-          
-          // Set appropriate headers
-          res.set({
-            'Content-Type': photo.mimeType || 'image/jpeg',
-            'Content-Length': buffer.length.toString(),
-            'Cache-Control': 'public, max-age=3600', // Cache for 1 hour
-            'ETag': `"${photo.id}-${photo.updatedAt.getTime()}"`
-          });
-          
-          // Send the image
-          return res.send(buffer);
-          
-        } catch (downloadError) {
-          logger.warn('Failed to download via SharePoint service, trying direct URL', downloadError);
-        }
-      }
-      
-      // Fallback: Check if fileUrl is a direct download URL
-      if (photo.fileUrl.includes('@microsoft.graph.downloadUrl') || photo.fileUrl.includes('/content')) {
-        try {
-          const response = await fetch(photo.fileUrl);
-          
-          if (response.ok) {
-            const imageBuffer = await response.arrayBuffer();
-            const buffer = Buffer.from(imageBuffer);
-            
-            res.set({
-              'Content-Type': photo.mimeType || 'image/jpeg',
-              'Content-Length': buffer.length.toString(),
-              'Cache-Control': 'public, max-age=3600',
-              'ETag': `"${photo.id}-${photo.updatedAt.getTime()}"`
-            });
-            
-            return res.send(buffer);
-          }
-        } catch (directError) {
-          logger.warn('Direct URL fetch failed', directError);
-        }
-      }
-      
-      // If all methods fail
-      return res.status(404).json({ error: 'Image not accessible' });
-      
-    } catch (fetchError) {
-      logger.error('Error fetching SharePoint image:', fetchError);
-      res.status(500).json({ error: 'Failed to fetch image' });
-    }
-    
-  } catch (error) {
-    logger.error('Error in photo proxy:', error);
-    res.status(500).json({ error: 'Failed to proxy photo' });
-  }
-});
+// REMOVED: Photo proxy route - replaced by enhanced media service
+// Use /api/photos-enhanced/public/:photoId or /api/photos-enhanced/thumbnail/:photoId instead
+// This eliminates the proxy layer and provides direct access with proper caching and thumbnails
 
 export default router;

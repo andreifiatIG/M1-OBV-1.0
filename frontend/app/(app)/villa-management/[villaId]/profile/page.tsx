@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { useAuthenticatedApi } from '@/lib/useAuthenticatedApi';
-import { Loader2, Home, User, FileText, CreditCard, Globe, Upload, Users, Grid3X3, Camera, CheckCircle, Activity, Shield, Database } from 'lucide-react';
+import { Loader2, Home, User, FileText, CreditCard, Globe, Upload, Users, Grid3X3, Camera, Activity, Shield, Database } from 'lucide-react';
 
 // Import the new comprehensive sections
 import VillaInformationSection from '@/components/villa-profile/sections/VillaInformationSection';
@@ -14,7 +14,6 @@ import DocumentsSection from '@/components/villa-profile/sections/DocumentsSecti
 import StaffConfigurationSection from '@/components/villa-profile/sections/StaffConfigurationSection';
 import FacilitiesSection from '@/components/villa-profile/sections/FacilitiesSection';
 import PhotosSection from '@/components/villa-profile/sections/PhotosSection';
-import ReviewSection from '@/components/villa-profile/sections/ReviewSection';
 
 interface VillaProfilePageProps {
   params: Promise<{
@@ -87,13 +86,6 @@ const navigationSections = [
     categories: ['Logo', 'Floor Plan', 'Exterior', 'Interior Living', 'Bedrooms', 'Bathrooms', 'Kitchen', 'Dining', 'Pool & Outdoor', 'Garden', 'Amenities', 'Views', 'Staff Areas', 'Utility Areas', 'Videos', 'Drone Shots', 'Entertainment'],
     fieldCount: 0
   },
-  {
-    id: 'review',
-    title: 'Review & Submit',
-    icon: CheckCircle,
-    categories: ['Final Validation', 'Submission Status'],
-    fieldCount: 0
-  }
 ];
 
 export default function VillaProfilePage({ params }: VillaProfilePageProps) {
@@ -394,13 +386,7 @@ export default function VillaProfilePage({ params }: VillaProfilePageProps) {
               />
             </section>
 
-            {/* Stage 10: Review */}
-            <section id="review" className="scroll-mt-6">
-              <ReviewSection 
-                villaProfile={villaProfile} 
-                villaId={villaId} 
-              />
-            </section>
+            {/* Review section removed - now available only in onboarding wizard */}
           </div>
         </div>
       </div>

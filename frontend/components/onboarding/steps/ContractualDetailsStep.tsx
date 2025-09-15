@@ -196,12 +196,12 @@ const getOrdinalSuffix = (day: string) => {
 
 const defaultFormData = {
   // Contract Dates (maps to contractStartDate and contractEndDate in DB)
-  contractSignatureDate: '',     // Maps to contractStartDate
-  contractRenewalDate: '',       // Maps to contractEndDate
+  contractStartDate: '',     // Maps to contractStartDate in DB
+  contractEndDate: '',       // Maps to contractEndDate in DB  
   contractType: 'EXCLUSIVE',     // Maps to contractType enum
   
   // Financial Terms
-  serviceCharge: '',             // Maps to commissionRate in DB
+  commissionRate: '',             // Maps to commissionRate in DB (was serviceCharge)
   managementFee: '',             // Direct mapping  
   marketingFee: '',              // Direct mapping
   
@@ -368,7 +368,7 @@ const ContractualDetailsStep = forwardRef<StepHandle, ContractualDetailsStepProp
     validate: validateForm,
     getData: () => ({
       ...formData,
-      serviceCharge: parseFloat(formData.serviceCharge) || 0,
+      commissionRate: parseFloat(formData.commissionRate) || 0,
     }),
   }));
 
@@ -396,35 +396,35 @@ const ContractualDetailsStep = forwardRef<StepHandle, ContractualDetailsStepProp
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">
-                Contract Signature Date
+                Contract Start Date
               </label>
               <input
                 type="date"
-                value={formData.contractSignatureDate}
-                onChange={(e) => handleInputChange('contractSignatureDate', e.target.value)}
+                value={formData.contractStartDate}
+                onChange={(e) => handleInputChange('contractStartDate', e.target.value)}
                 className={`w-full px-4 py-3 bg-white/60 backdrop-filter backdrop-blur-10 border rounded-lg text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white/80 transition-all duration-200 ${
-                  errors.contractSignatureDate ? 'border-red-500 bg-red-50/60' : 'border-teal-400/40'
+                  errors.contractStartDate ? 'border-red-500 bg-red-50/60' : 'border-teal-400/40'
                 }`}
               />
-              {errors.contractSignatureDate && (
-                <p className="text-red-400 text-sm mt-1">{errors.contractSignatureDate}</p>
+              {errors.contractStartDate && (
+                <p className="text-red-400 text-sm mt-1">{errors.contractStartDate}</p>
               )}
             </div>
 
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">
-                Contract Renewal Date
+                Contract End Date
               </label>
               <input
                 type="date"
-                value={formData.contractRenewalDate}
-                onChange={(e) => handleInputChange('contractRenewalDate', e.target.value)}
+                value={formData.contractEndDate}
+                onChange={(e) => handleInputChange('contractEndDate', e.target.value)}
                 className={`w-full px-4 py-3 bg-white/60 backdrop-filter backdrop-blur-10 border rounded-lg text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white/80 transition-all duration-200 ${
-                  errors.contractRenewalDate ? 'border-red-500 bg-red-50/60' : 'border-teal-400/40'
+                  errors.contractEndDate ? 'border-red-500 bg-red-50/60' : 'border-teal-400/40'
                 }`}
               />
-              {errors.contractRenewalDate && (
-                <p className="text-red-400 text-sm mt-1">{errors.contractRenewalDate}</p>
+              {errors.contractEndDate && (
+                <p className="text-red-400 text-sm mt-1">{errors.contractEndDate}</p>
               )}
             </div>
 
@@ -500,22 +500,22 @@ const ContractualDetailsStep = forwardRef<StepHandle, ContractualDetailsStepProp
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Service Charge (%)
+                  Commission Rate (%)
                 </label>
                 <input
                   type="number"
                   min="0"
                   max="100"
                   step="0.01"
-                  value={formData.serviceCharge}
-                  onChange={(e) => handleInputChange('serviceCharge', e.target.value)}
+                  value={formData.commissionRate}
+                  onChange={(e) => handleInputChange('commissionRate', e.target.value)}
                   placeholder="e.g. 15.5"
                   className={`w-full px-4 py-3 bg-white/60 backdrop-filter backdrop-blur-10 border rounded-lg text-slate-800 placeholder-slate-500/80 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white/80 transition-all duration-200 ${
-                    errors.serviceCharge ? 'border-red-500 bg-red-50/60' : 'border-teal-400/40'
+                    errors.commissionRate ? 'border-red-500 bg-red-50/60' : 'border-teal-400/40'
                   }`}
                 />
-                {errors.serviceCharge && (
-                  <p className="text-red-400 text-sm mt-1">{errors.serviceCharge}</p>
+                {errors.commissionRate && (
+                  <p className="text-red-400 text-sm mt-1">{errors.commissionRate}</p>
                 )}
               </div>
 

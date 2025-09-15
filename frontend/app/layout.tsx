@@ -3,6 +3,14 @@ import { ClerkProvider } from "@clerk/nextjs";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
+// Global promise rejection handler
+if (typeof window !== 'undefined') {
+  window.addEventListener('unhandledrejection', (event) => {
+    console.error('Unhandled promise rejection:', event.reason);
+    event.preventDefault();
+  });
+}
+
 
 const geistSans = Geist({
   variable: "--font-geist-sans",

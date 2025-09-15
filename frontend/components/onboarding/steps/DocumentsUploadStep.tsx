@@ -88,7 +88,7 @@ const DocumentsUploadStep = forwardRef<StepHandle, DocumentsUploadStepProps>((
       
       // Use the actual backend API endpoint
       const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001';
-      const uploadUrl = `${API_URL}/api/documents/upload-sharepoint`;
+      const uploadUrl = `${API_URL}/api/documents-enhanced`;
       
       console.log('🔗 Making API call to:', uploadUrl);
       console.log('[TOKEN] Auth token present:', !!token);

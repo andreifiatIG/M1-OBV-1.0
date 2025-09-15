@@ -402,7 +402,7 @@ class MicrosoftGraphService {
       // Try to get the content directly as a response
       const response = await this.client
         .api(`/sites/${siteId}/drives/${driveId}/items/${fileId}/content`)
-        .responseType('arraybuffer')
+        .responseType('buffer' as any)
         .get();
 
       // If response is already an ArrayBuffer, return it
@@ -412,7 +412,8 @@ class MicrosoftGraphService {
       
       // If response is a Buffer, convert to ArrayBuffer
       if (Buffer.isBuffer(response)) {
-        return response.buffer.slice(response.byteOffset, response.byteOffset + response.byteLength);
+        const arrayBuffer = response.buffer as ArrayBuffer;
+        return arrayBuffer.slice(response.byteOffset, response.byteOffset + response.byteLength);
       }
       
       // If response is something else (shouldn't happen), try to handle it

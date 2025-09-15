@@ -1,6 +1,6 @@
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import { Server as HTTPServer } from 'http';
-import electricSQLService from '../electric/client';
+// import electricSQLService from '../electric/client'; // Disabled - ElectricSQL not configured in this iteration
 import { logger } from '../utils/logger';
 import { prisma } from '../server';
 
@@ -174,12 +174,13 @@ class WebSocketService {
       socket.join(room);
     }
 
-    // Start ElectricSQL sync for this user
+    // Start ElectricSQL sync for this user - DISABLED
     try {
-      await electricSQLService.startSync(authData.userId, authData.userRole, {
-        villaId: authData.villaId,
-        partnerId: authData.partnerId,
-      });
+      // await electricSQLService.startSync(authData.userId, authData.userRole, {
+      //   villaId: authData.villaId,
+      //   partnerId: authData.partnerId,
+      // });
+      logger.info('ElectricSQL sync disabled for this session');
     } catch (error) {
       logger.warn('ElectricSQL sync failed to start:', error);
     }
@@ -344,10 +345,10 @@ class WebSocketService {
         }
       }
 
-      // Stop ElectricSQL sync
-      electricSQLService.stopSync(socket.userId).catch(error => {
-        logger.error('Failed to stop ElectricSQL sync:', error);
-      });
+      // Stop ElectricSQL sync - DISABLED
+      // electricSQLService.stopSync(socket.userId).catch(error => {
+      //   logger.error('Failed to stop ElectricSQL sync:', error);
+      // });
 
       logger.info(`🔌 Client disconnected: ${socket.id} (${socket.userId}) - ${reason}`);
     }
@@ -369,7 +370,7 @@ class WebSocketService {
     }
 
     try {
-      await electricSQLService.forceSync(data.table);
+      // await electricSQLService.forceSync(data.table); // ElectricSQL disabled
       socket.emit('sync_completed', { table: data.table, timestamp: new Date() });
     } catch (error) {
       socket.emit('sync_error', { table: data.table, error: (error as Error).message });
@@ -492,7 +493,7 @@ class WebSocketService {
       initialized: this.isInitialized,
       connectedUsers: this.getConnectedUsersCount(),
       activeSubscriptions: this.getActiveSubscriptionsCount(),
-      electricSQLStatus: electricSQLService.getSyncStatus(),
+      electricSQLStatus: { connected: false, subscriptionsCount: 0, authContext: null }, // electricSQLService.getSyncStatus(),
     };
   }
 
@@ -502,7 +503,7 @@ class WebSocketService {
   broadcastSyncStatus(): void {
     if (!this.io) return;
 
-    const status = electricSQLService.getSyncStatus();
+    const status = { connected: false, subscriptionsCount: 0, authContext: null }; // electricSQLService.getSyncStatus();
     const message: WebSocketMessage = {
       type: 'sync_status',
       data: status,

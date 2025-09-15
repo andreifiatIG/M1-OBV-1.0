@@ -685,7 +685,7 @@ if (completedStepsCount === this.TOTAL_STEPS) {
                     status: (value !== undefined && value !== null && value !== '') ? 'IN_PROGRESS' : 'NOT_STARTED',
                     isSkipped: false,
                     isValid: value !== undefined && value !== null && value !== '',
-                    value: value ?? null,
+                    value: value !== undefined && value !== null ? value as any : null,
                     isRequired: false,
                     dependsOnFields: [],
                   }
@@ -819,7 +819,8 @@ if (completedStepsCount === this.TOTAL_STEPS) {
         case 1: // Villa Information
           logger.info(`Saving villa information for villa ${villaId}`, {
             villaName: data.villaName,
-            location: data.location,
+            city: data.city || data.villaCity,
+            country: data.country || data.villaCountry,
             bedrooms: data.bedrooms,
             bathrooms: data.bathrooms,
             maxGuests: data.maxGuests
@@ -842,47 +843,46 @@ if (completedStepsCount === this.TOTAL_STEPS) {
           
           // Core villa fields - only set if provided
           if (data.villaName || data.name) updateData.villaName = data.villaName || data.name;
-          if (data.location) updateData.location = data.location;
           if (data.address || data.villaAddress) updateData.address = data.address || data.villaAddress;
           if (data.city || data.villaCity) updateData.city = data.city || data.villaCity;
           if (data.country || data.villaCountry) updateData.country = data.country || data.villaCountry;
           if (data.zipCode || data.villaPostalCode) updateData.zipCode = data.zipCode || data.villaPostalCode;
           
-          // Coordinate handling - only update if valid values provided
-          if (parsedLatitude && !isNaN(parseFloat(parsedLatitude))) {
+          // Coordinate handling - only update if valid values provided (allow 0 values)
+          if (parsedLatitude !== undefined && parsedLatitude !== null && parsedLatitude !== '' && !isNaN(parseFloat(parsedLatitude))) {
             updateData.latitude = parseFloat(parsedLatitude);
           }
-          if (parsedLongitude && !isNaN(parseFloat(parsedLongitude))) {
+          if (parsedLongitude !== undefined && parsedLongitude !== null && parsedLongitude !== '' && !isNaN(parseFloat(parsedLongitude))) {
             updateData.longitude = parseFloat(parsedLongitude);
           }
           
           // Numeric fields - only update if valid values provided
-          if (data.bedrooms && !isNaN(parseInt(data.bedrooms))) {
+          if (data.bedrooms !== undefined && data.bedrooms !== null && data.bedrooms !== '' && !isNaN(parseInt(data.bedrooms))) {
             updateData.bedrooms = parseInt(data.bedrooms);
           }
-          if (data.bathrooms && !isNaN(parseInt(data.bathrooms))) {
+          if (data.bathrooms !== undefined && data.bathrooms !== null && data.bathrooms !== '' && !isNaN(parseInt(data.bathrooms))) {
             updateData.bathrooms = parseInt(data.bathrooms);
           }
-          if (data.maxGuests && !isNaN(parseInt(data.maxGuests))) {
+          if (data.maxGuests !== undefined && data.maxGuests !== null && data.maxGuests !== '' && !isNaN(parseInt(data.maxGuests))) {
             updateData.maxGuests = parseInt(data.maxGuests);
           }
           
           // Area fields - only update if valid values provided
           const propertySize = data.propertySize || data.villaArea;
-          if (propertySize && !isNaN(parseFloat(propertySize))) {
+          if (propertySize !== undefined && propertySize !== null && propertySize !== '' && !isNaN(parseFloat(propertySize))) {
             updateData.propertySize = parseFloat(propertySize);
           }
           
           const plotSize = data.plotSize || data.landArea;
-          if (plotSize && !isNaN(parseFloat(plotSize))) {
+          if (plotSize !== undefined && plotSize !== null && plotSize !== '' && !isNaN(parseFloat(plotSize))) {
             updateData.plotSize = parseFloat(plotSize);
           }
           
           // Property details - only update if provided
-          if (data.yearBuilt && !isNaN(parseInt(data.yearBuilt))) {
+          if (data.yearBuilt !== undefined && data.yearBuilt !== null && data.yearBuilt !== '' && !isNaN(parseInt(data.yearBuilt))) {
             updateData.yearBuilt = parseInt(data.yearBuilt);
           }
-          if (data.renovationYear && !isNaN(parseInt(data.renovationYear))) {
+          if (data.renovationYear !== undefined && data.renovationYear !== null && data.renovationYear !== '' && !isNaN(parseInt(data.renovationYear))) {
             updateData.renovationYear = parseInt(data.renovationYear);
           }
           if (data.propertyType) updateData.propertyType = data.propertyType;
@@ -898,6 +898,10 @@ if (completedStepsCount === this.TOTAL_STEPS) {
           if (data.googleMapsLink !== undefined) updateData.googleMapsLink = data.googleMapsLink;
           if (data.oldRatesCardLink !== undefined) updateData.oldRatesCardLink = data.oldRatesCardLink;
           if (data.iCalCalendarLink !== undefined) updateData.iCalCalendarLink = data.iCalCalendarLink;
+          
+          // Property contact information - only update if provided
+          if (data.propertyEmail !== undefined) updateData.propertyEmail = data.propertyEmail;
+          if (data.propertyWebsite !== undefined) updateData.propertyWebsite = data.propertyWebsite;
 
           await prisma.villa.update({
             where: { id: villaId },
@@ -1208,11 +1212,12 @@ if (completedStepsCount === this.TOTAL_STEPS) {
         }
         
         // Handle multiple staff members with transaction safety
+        let staffOperationResult: any;
         if (Array.isArray(data.staff)) {
           logger.info(`🔍 PROCESSING: Saving staff configuration for villa ${villaId} - ${data.staff.length} staff members`);
           
           // Use database transaction to ensure atomicity
-          const staffOperationResult = await prisma.$transaction(async (prismaTransaction) => {
+          staffOperationResult = await prisma.$transaction(async (prismaTransaction) => {
             const results = {
               deactivated: 0,
               created: 0,
@@ -1424,16 +1429,18 @@ if (completedStepsCount === this.TOTAL_STEPS) {
           });
           
           // Log transaction results
-          logger.info(`🔍 STAFF TRANSACTION COMPLETED for villa ${villaId}:`, {
-            deactivated: staffOperationResult.deactivated,
-            created: staffOperationResult.created,
-            updated: staffOperationResult.updated,
-            failed: staffOperationResult.failed,
-            errors: staffOperationResult.errors.length > 0 ? staffOperationResult.errors : 'No errors'
-          });
-          
-          if (staffOperationResult.failed > 0) {
-            logger.warn(`🔍 Some staff operations failed for villa ${villaId}. Check logs above for details.`);
+          if (staffOperationResult) {
+            logger.info(`🔍 STAFF TRANSACTION COMPLETED for villa ${villaId}:`, {
+              deactivated: staffOperationResult.deactivated,
+              created: staffOperationResult.created,
+              updated: staffOperationResult.updated,
+              failed: staffOperationResult.failed,
+              errors: staffOperationResult.errors.length > 0 ? staffOperationResult.errors : 'No errors'
+            });
+            
+            if (staffOperationResult.failed > 0) {
+              logger.warn(`🔍 Some staff operations failed for villa ${villaId}. Check logs above for details.`);
+            }
           }
           
           logger.info(`🔍 CASE CLOSED: Staff configuration saved successfully for villa ${villaId}`);
@@ -1459,7 +1466,7 @@ if (completedStepsCount === this.TOTAL_STEPS) {
         
         // Log each facility in detail for debugging
         if (Array.isArray(data.facilities) && data.facilities.length > 0) {
-          data.facilities.forEach((facility, index) => {
+          data.facilities.forEach((facility: any, index: number) => {
             logger.info(`🏭 [FACILITY] Facility ${index + 1}:`, {
               category: facility.category,
               subcategory: facility.subcategory,
@@ -1534,7 +1541,7 @@ if (completedStepsCount === this.TOTAL_STEPS) {
 
                 logger.debug(`🏭 [FACILITY] Deleted ${deleteResult.count} records for unavailable: ${category}/${itemName}`);
               } catch (error) {
-                const errorMsg = `Failed to delete facility ${facility.category}/${facility.itemName}: ${error.message}`;
+                const errorMsg = `Failed to delete facility ${facility.category}/${facility.itemName}: ${error instanceof Error ? error.message : String(error)}`;
                 results.errors.push(errorMsg);
                 logger.error(`🏭 [FACILITY] ${errorMsg}`, error);
               }
@@ -1685,7 +1692,7 @@ if (completedStepsCount === this.TOTAL_STEPS) {
 
                 results.processed++;
               } catch (error) {
-                const errorMsg = `Failed to upsert facility ${facility.category}/${facility.itemName}: ${error.message}`;
+                const errorMsg = `Failed to upsert facility ${facility.category}/${facility.itemName}: ${error instanceof Error ? error.message : String(error)}`;
                 results.errors.push(errorMsg);
                 logger.error(`🏭 [FACILITY] ${errorMsg}`, error);
               }
@@ -1781,7 +1788,10 @@ if (completedStepsCount === this.TOTAL_STEPS) {
     switch (step) {
       case 1: // Villa Information
         if (!data.villaName) errors.push('Villa name is required');
-        if (!data.location) errors.push('Location is required');
+        // Require city and country combination
+        if (!(data.city && data.country)) {
+          errors.push('City and country are required');
+        }
         if (!data.address) errors.push('Address is required');
         if (!data.bedrooms || data.bedrooms < 1) errors.push('Number of bedrooms must be at least 1');
         if (!data.bathrooms || data.bathrooms < 1) errors.push('Number of bathrooms must be at least 1');
@@ -1789,7 +1799,7 @@ if (completedStepsCount === this.TOTAL_STEPS) {
         if (!data.propertyType) errors.push('Property type is required');
         
         if (!data.description) warnings.push('Description is recommended for better listing visibility');
-        if (!data.latitude || !data.longitude) warnings.push('GPS coordinates help with map display');
+        if (data.latitude === undefined || data.longitude === undefined) warnings.push('GPS coordinates help with map display');
         break;
 
       case 2: // Owner Details
@@ -2067,8 +2077,21 @@ async rejectOnboarding(_villaId: string, _rejectedBy: string, _reason: string) {
     const stepCompletionDetails: Record<number, { isComplete: boolean; reason: string; requiredFields: string[]; completedFields: string[] }> = {};
     
     // Step 1: Villa Info
-    const step1Required = ['villaName', 'location', 'address', 'city', 'country', 'bedrooms', 'bathrooms', 'maxGuests', 'propertyType'];
-    const step1Completed = step1Required.filter(field => villa?.[field] && villa[field] !== '');
+    // Require city and country combination
+    const hasLocation = Boolean(villa?.city && villa?.country);
+    const step1Required = ['villaName', 'address', 'bedrooms', 'bathrooms', 'maxGuests', 'propertyType', 'city', 'country'];
+
+    // Compute completed fields
+    const step1Completed = step1Required.filter(field => {
+      if (field === 'city' || field === 'country') return Boolean(villa?.[field]);
+      if (field === 'location') return hasLocation;
+      const value = (villa as any)?.[field];
+      if (value === null || value === undefined) return false;
+      if (typeof value === 'number') return !isNaN(value) && value > 0; // require > 0 for numeric fields
+      if (typeof value === 'string') return value.trim() !== '';
+      return Boolean(value);
+    });
+
     stepCompletionDetails[1] = {
       isComplete: step1Completed.length === step1Required.length,
       reason: `${step1Completed.length}/${step1Required.length} required fields completed`,
@@ -2457,10 +2480,10 @@ async rejectOnboarding(_villaId: string, _rejectedBy: string, _reason: string) {
       if (filters?.location) {
         where.villa = {
           ...where.villa,
-          location: {
-            contains: filters.location,
-            mode: 'insensitive',
-          },
+          OR: [
+            { city: { contains: filters.location, mode: 'insensitive' } },
+            { country: { contains: filters.location, mode: 'insensitive' } },
+          ],
         };
       }
 
@@ -2502,7 +2525,7 @@ async rejectOnboarding(_villaId: string, _rejectedBy: string, _reason: string) {
               },
             },
           },
-          orderBy: { submittedAt: 'desc' },
+          orderBy: { updatedAt: 'desc' },
           skip,
           take: limit,
         }),
@@ -2510,7 +2533,7 @@ async rejectOnboarding(_villaId: string, _rejectedBy: string, _reason: string) {
       ]);
 
       // Transform data to match frontend interface with enhanced data accuracy
-      const transformedApprovals = approvals.map((approval) => {
+      const transformedApprovals = approvals.map((approval: any) => {
         const completedSteps = this.countCompletedSteps(approval);
         const progressPercentage = Math.round((completedSteps / this.TOTAL_STEPS) * 100);
         
@@ -2519,6 +2542,10 @@ async rejectOnboarding(_villaId: string, _rejectedBy: string, _reason: string) {
           logger.warn(`Missing villa data for approval ${approval.id}`);
           return null;
         }
+        
+        // Calculate time since submission with proper null checking
+        const submissionDate = approval.submittedAt ? new Date(approval.submittedAt) : new Date(approval.updatedAt);
+        const daysSinceSubmission = Math.floor((Date.now() - submissionDate.getTime()) / (1000 * 60 * 60 * 24));
         
         return {
           id: approval.villaId, // Use villaId as the approval ID
@@ -2540,7 +2567,7 @@ async rejectOnboarding(_villaId: string, _rejectedBy: string, _reason: string) {
           documentsCount: approval.villa.documents?.length || 0,
           photosCount: approval.villa.photos?.length || 0,
           staffCount: approval.villa.staff?.length || 0,
-          location: approval.villa.location || `${approval.villa.city || 'Unknown'}, ${approval.villa.country || 'Unknown'}`,
+          location: `${approval.villa.city || 'Unknown'}, ${approval.villa.country || 'Unknown'}`,
           city: approval.villa.city || 'Unknown',
           country: approval.villa.country || 'Unknown',
           bedrooms: approval.villa.bedrooms || 0,
@@ -2558,9 +2585,7 @@ async rejectOnboarding(_villaId: string, _rejectedBy: string, _reason: string) {
           requiresAttention: progressPercentage < 70 && approval.status === 'PENDING_REVIEW',
           
           // Time tracking
-          daysSinceSubmission: approval.submittedAt 
-            ? Math.floor((Date.now() - new Date(approval.submittedAt).getTime()) / (1000 * 60 * 60 * 24))
-            : Math.floor((Date.now() - new Date(approval.updatedAt).getTime()) / (1000 * 60 * 60 * 24)),
+          daysSinceSubmission,
         };
       }).filter(Boolean); // Remove any null entries
 

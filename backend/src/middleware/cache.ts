@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import NodeCache from 'node-cache';
 import { createHash } from 'crypto';
+import { logger } from '../utils/logger';
 
 // Create cache instances with different TTL for different purposes
 const shortCache = new NodeCache({ stdTTL: 60 }); // 1 minute cache for frequently changing data
@@ -121,7 +122,7 @@ export const invalidateCache = (patterns: string[]) => {
 
 // Cache warming function for critical data
 export const warmCache = async () => {
-  logger.debug('🔥 Warming cache for critical endpoints...');
+  logger.debug('Warming cache for critical endpoints...');
   
   // Add cache warming logic here for frequently accessed endpoints
   // This would typically make internal calls to populate the cache

@@ -80,21 +80,24 @@ export default function FacilityItem({
           const sharePointFormData = new FormData();
           sharePointFormData.append('photos', file);
           sharePointFormData.append('villaId', villaId);
-          sharePointFormData.append('facilityCategory', categoryId);
-          sharePointFormData.append('facilityItemName', item.name);
-          sharePointFormData.append('facilityItemId', item.id);
+          sharePointFormData.append('category', 'AMENITIES'); // Use AMENITIES for facility photos
+          sharePointFormData.append('subfolder', `facilities/${categoryId}`);
+          sharePointFormData.append('caption', `${item.name} facility photo`);
+          sharePointFormData.append('altText', `${item.name} in ${categoryId}`);
+          sharePointFormData.append('generateThumbnail', 'true');
           
-          const sharePointResp = await clientApi.request('/api/photos/upload-facility', {
+          const sharePointResp = await clientApi.request('/api/photos-enhanced', {
             method: 'POST',
             body: sharePointFormData,
           });
           
-          if (sharePointResp.success && sharePointResp.data?.photos?.length > 0) {
-            console.log('📷 Photo also backed up to SharePoint');
-            // Update item with SharePoint URL as backup
+          if (sharePointResp.success && sharePointResp.data?.length > 0) {
+            console.log('📷 Photo uploaded to enhanced media service with thumbnails');
+            // Update item with enhanced photo URLs
             onUpdate({ 
-              photoUrl: reader.result as string, // Keep local preview from FileReader
-              sharePointUrl: sharePointResp.data.photos[0].fileUrl // Store SharePoint backup URL
+              photoUrl: sharePointResp.data[0].fileUrl, // Use enhanced public URL
+              sharePointUrl: sharePointResp.data[0].sharePointUrl, // Store SharePoint backup URL
+              thumbnailUrl: sharePointResp.data[0].thumbnailUrl // Store thumbnail URL for fast loading
             });
           }
         } catch (error) {
