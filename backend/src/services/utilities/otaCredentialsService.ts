@@ -1,6 +1,6 @@
-import { prisma } from '../server';
-import { encryptOTACredentials, decryptOTACredentials } from '../utils/encryption';
-import { logger } from '../utils/logger';
+import { prisma } from '../../server';
+import { encryptOTACredentials, decryptOTACredentials } from '../../utils/encryption';
+import { logger } from '../../utils/logger';
 
 export interface OTACredentialsInput {
   villaId: string;

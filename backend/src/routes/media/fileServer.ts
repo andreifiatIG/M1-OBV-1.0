@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../../middleware/auth';
-import databaseFileStorageService from '../services/databaseFileStorageService';
+import databaseFileStorageService from '../../services/storage/databaseFileStorageService';
 import { logger } from '../../utils/logger';
 import { onboardingReadRateLimit } from '../../middleware/rateLimiting';
 

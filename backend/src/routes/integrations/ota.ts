@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { prisma } from '../../server';
 import { validateRequest } from '../../middleware/validation';
 import { authMiddleware } from '../../middleware/auth';
-import { OTACredentialsService } from '../services/otaCredentialsService';
+import { OTACredentialsService } from '../../services/utilities/otaCredentialsService';
 import { logger } from '../../utils/logger';
 import { z } from 'zod';
 

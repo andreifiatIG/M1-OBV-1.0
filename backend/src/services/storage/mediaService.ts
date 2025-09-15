@@ -1,7 +1,7 @@
 import { PrismaClient, Photo, Document } from '@prisma/client';
 import sharp from 'sharp';
-import { logger } from '../utils/logger';
-import sharePointService from './sharePointService';
+import { logger } from '../../utils/logger';
+import sharePointService from '../integrations/sharePointService';
 
 const prisma = new PrismaClient();
 

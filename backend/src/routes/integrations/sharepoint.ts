@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
-import mockSharePointService from '../services/mockSharePointService';
+import mockSharePointService from '../../services/utilities/mockSharePointService';
 import { simpleClerkAuth } from '../../middleware/simpleClerkAuth';
 import { logger } from '../../utils/logger';
 
