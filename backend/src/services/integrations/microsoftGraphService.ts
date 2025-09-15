@@ -1,6 +1,6 @@
 import { Client } from '@microsoft/microsoft-graph-client';
 import { AuthenticationProvider } from '@microsoft/microsoft-graph-client';
-import { logger } from '../utils/logger';
+import { logger } from '../../utils/logger';
 
 interface TokenResponse {
   access_token: string;

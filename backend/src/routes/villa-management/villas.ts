@@ -1,12 +1,12 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
-import villaService from '../services/villaService';
-import { simpleClerkAuth } from '../middleware/simpleClerkAuth';
-import { validateRequest } from '../middleware/validation';
+import villaService from "../../services/core/villaService";
+import { simpleClerkAuth } from '../../middleware/simpleClerkAuth';
+import { validateRequest } from '../../middleware/validation';
 import { PrismaClient, VillaStatus } from '@prisma/client';
-import { BankDetailsService } from '../services/bankDetailsService';
-import { mediaService } from '../services/mediaService';
-import onboardingService from '../services/onboardingService';
+import { BankDetailsService } from "../../services/core/bankDetailsService";
+import { mediaService } from "../../services/storage/mediaService";
+import onboardingService from "../../services/core/onboardingService";
 
 const router = Router();
 

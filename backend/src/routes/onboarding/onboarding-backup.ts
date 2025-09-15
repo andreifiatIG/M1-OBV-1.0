@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import { PrismaClient } from '@prisma/client';
-import { authenticate } from '../middleware/auth';
+import { authenticate } from '../../middleware/auth';
 import { z } from 'zod';
-import { backupRateLimit } from '../middleware/rateLimiting';
+import { backupRateLimit } from '../../middleware/rateLimiting';
 
 const router = Router();
 const prisma = new PrismaClient();

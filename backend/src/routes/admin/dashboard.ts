@@ -1,8 +1,8 @@
 import { Router, Request, Response } from 'express';
-import dashboardService from '../services/dashboardService';
-import onboardingProgressService from '../services/onboardingProgressService';
-import onboardingService from '../services/onboardingService';
-import { simpleClerkAuth } from '../middleware/simpleClerkAuth';
+import dashboardService from '../../services/admin/dashboardService';
+import onboardingProgressService from '../../services/admin/onboardingProgressService';
+import onboardingService from '../../services/core/onboardingService';
+import { simpleClerkAuth } from '../../middleware/simpleClerkAuth';
 
 const router = Router();
 

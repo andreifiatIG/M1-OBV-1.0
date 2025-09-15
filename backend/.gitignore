@@ -5,3 +5,7 @@ dist/
 # Logs
 logs/
 *.log
+
+# Upload and temporary folders
+temp/
+uploads/

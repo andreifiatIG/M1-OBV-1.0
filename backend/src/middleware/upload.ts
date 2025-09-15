@@ -3,7 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { Request } from 'express';
 import { logger } from '../utils/logger';
-import databaseFileStorageService from '../services/databaseFileStorageService';
+import databaseFileStorageService from '../services/storage/databaseFileStorageService';
 
 // Create uploads directory if it doesn't exist
 const uploadsDir = path.join(process.cwd(), 'uploads');

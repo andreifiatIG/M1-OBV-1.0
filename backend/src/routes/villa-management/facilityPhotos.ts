@@ -2,8 +2,8 @@ import { Router, Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import multer from 'multer';
 import sharp from 'sharp';
-import { authenticate } from '../middleware/auth.js';
-import { logger } from '../utils/logger.js';
+import { authenticate } from '../../middleware/auth.js';
+import { logger } from '../../utils/logger.js';
 
 const router = Router();
 const prisma = new PrismaClient();

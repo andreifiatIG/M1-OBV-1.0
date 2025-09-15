@@ -1,15 +1,15 @@
 import { Router, Request, Response } from 'express';
-import { prisma } from '../server';
-import { validateRequest } from '../middleware/validation';
-import { authMiddleware } from '../middleware/auth';
-import { documentUpload, handleMulterError, getFileUrl, deleteFile, getFileInfo, storeDocument } from '../middleware/upload';
-import sharePointService from '../services/sharePointService';
+import { prisma } from '../../server';
+import { validateRequest } from '../../middleware/validation';
+import { authMiddleware } from '../../middleware/auth';
+import { documentUpload, handleMulterError, getFileUrl, deleteFile, getFileInfo, storeDocument } from '../../middleware/upload';
+import sharePointService from '../../services/integrations/sharePointService';
 import multer from 'multer';
-import { logger } from '../utils/logger';
+import { logger } from '../../utils/logger';
 import { z } from 'zod';
 import path from 'path';
 import fs from 'fs';
-import { fileUploadRateLimit } from '../middleware/rateLimiting';
+import { fileUploadRateLimit } from '../../middleware/rateLimiting';
 
 const router = Router();
 

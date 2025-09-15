@@ -1,8 +1,8 @@
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import { Server as HTTPServer } from 'http';
 // import electricSQLService from '../electric/client'; // Disabled - ElectricSQL not configured in this iteration
-import { logger } from '../utils/logger';
-import { prisma } from '../server';
+import { logger } from '../../utils/logger';
+import { prisma } from '../../server';
 
 interface AuthenticatedSocket extends Socket {
   userId?: string;

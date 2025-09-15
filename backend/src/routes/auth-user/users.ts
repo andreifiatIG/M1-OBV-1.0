@@ -1,5 +1,5 @@
 import express from 'express';
-import { authenticate } from '../middleware/auth';
+import { authenticate } from '../../middleware/auth';
 import { clerkClient } from '@clerk/clerk-sdk-node';
 
 const router = express.Router();

@@ -8,9 +8,9 @@ import { rateLimit } from 'express-rate-limit';
 import { createServer } from 'http';
 import { PrismaClient } from '@prisma/client';
 import { logger, morganStream, performanceLogger } from './utils/logger';
-import microsoftGraphService from './services/microsoftGraphService';
-import sharePointService from './services/sharePointService';
-import websocketService from './services/websocketService';
+import microsoftGraphService from './services/integrations/microsoftGraphService';
+import sharePointService from './services/integrations/sharePointService';
+import websocketService from './services/integrations/websocketService';
 import { errorHandler, notFoundHandler, timeoutHandler } from './middleware/errorHandler';
 import { warmCache } from './middleware/cache';
 

@@ -1,8 +1,8 @@
 import { Router, Request, Response } from 'express';
-import { prisma } from '../server';
-import { validateRequest } from '../middleware/validation';
-import { authMiddleware } from '../middleware/auth';
-import { logger } from '../utils/logger';
+import { prisma } from '../../server';
+import { validateRequest } from '../../middleware/validation';
+import { authMiddleware } from '../../middleware/auth';
+import { logger } from '../../utils/logger';
 import { z } from 'zod';
 
 const router = Router();

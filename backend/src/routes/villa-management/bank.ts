@@ -1,8 +1,8 @@
 import { Router, Request, Response } from 'express';
-import { validateRequest } from '../middleware/validation';
-import { authMiddleware } from '../middleware/auth';
-import { BankDetailsService } from '../services/bankDetailsService';
-import { logger } from '../utils/logger';
+import { validateRequest } from '../../middleware/validation';
+import { authMiddleware } from '../../middleware/auth';
+import { BankDetailsService } from "../../services/core/bankDetailsService";
+import { logger } from '../../utils/logger';
 import { z } from 'zod';
 
 const router = Router();

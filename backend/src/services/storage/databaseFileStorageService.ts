@@ -1,5 +1,5 @@
-import { prisma } from '../server';
-import { logger } from '../utils/logger';
+import { prisma } from '../../server';
+import { logger } from '../../utils/logger';
 import sharp from 'sharp';
 import * as zlib from 'zlib';
 import { promisify } from 'util';

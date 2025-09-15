@@ -1,8 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import mockSharePointService from '../services/mockSharePointService';
-import { simpleClerkAuth } from '../middleware/simpleClerkAuth';
-import { logger } from '../utils/logger';
+import { simpleClerkAuth } from '../../middleware/simpleClerkAuth';
+import { logger } from '../../utils/logger';
 
 const router = Router();
 const prisma = new PrismaClient();

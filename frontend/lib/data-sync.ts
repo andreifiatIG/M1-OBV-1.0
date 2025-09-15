@@ -110,7 +110,7 @@ export class DataSyncManager {
       
       // Get both villa details and onboarding progress
       const [villaResponse, onboardingResponse] = await Promise.all([
-        this.api.getVillaById(villaId),
+        this.api.getVilla(villaId),
         this.api.getOnboardingProgress(villaId)
       ]);
 

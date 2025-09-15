@@ -1,6 +1,6 @@
-import { prisma } from '../server';
-import { encryptBankData, decryptBankData } from '../utils/encryption';
-import { logger } from '../utils/logger';
+import { prisma } from '../../server';
+import { encryptBankData, decryptBankData } from '../../utils/encryption';
+import { logger } from '../../utils/logger';
 
 export interface BankDetailsInput {
   villaId: string;

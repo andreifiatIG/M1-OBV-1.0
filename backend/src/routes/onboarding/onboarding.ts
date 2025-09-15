@@ -1,14 +1,14 @@
 
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import onboardingService from '../services/onboardingService';
-import { authenticate } from '../middleware/auth';
-import { validateRequest } from '../middleware/validation';
-import { onboardingRateLimit, onboardingReadRateLimit, onboardingCompleteRateLimit, autoSaveRateLimit} from '../middleware/rateLimiting';
-import villaService from '../services/villaService';
-import { createSanitizationMiddleware, createValidationMiddleware, sanitizers, validators } from '../middleware/sanitization';
-import { cacheMiddleware, CacheDuration, invalidateCache } from '../middleware/cache';
-import { logger } from '../utils/logger';
+import onboardingService from "../../services/core/onboardingService";
+import { authenticate } from '../../middleware/auth';
+import { validateRequest } from '../../middleware/validation';
+import { onboardingRateLimit, onboardingReadRateLimit, onboardingCompleteRateLimit, autoSaveRateLimit} from '../../middleware/rateLimiting';
+import villaService from "../../services/core/villaService";
+import { createSanitizationMiddleware, createValidationMiddleware, sanitizers, validators } from '../../middleware/sanitization';
+import { cacheMiddleware, CacheDuration, invalidateCache } from '../../middleware/cache';
+import { logger } from '../../utils/logger';
 
 const router = Router();
 

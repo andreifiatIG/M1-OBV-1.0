@@ -1,9 +1,9 @@
 import express, { Request, Response } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
-import { logger } from '../utils/logger';
-import { mediaService } from '../services/mediaService';
-import { authMiddleware } from '../middleware/auth';
+import { logger } from '../../utils/logger';
+import { mediaService } from '../../services/storage/mediaService';
+import { authMiddleware } from '../../middleware/auth';
 import { rateLimit } from 'express-rate-limit';
 
 const router = express.Router();

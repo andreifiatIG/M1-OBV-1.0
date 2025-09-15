@@ -1,6 +1,6 @@
 import { PrismaClient, OnboardingStatus, VillaStatus, StepStatus, FieldStatus } from '@prisma/client';
-import { logger } from '../utils/logger';
-import onboardingProgressService from './onboardingProgressService';
+import { logger } from '../../utils/logger';
+import onboardingProgressService from '../admin/onboardingProgressService';
 
 const prisma = new PrismaClient();
 
