@@ -1,0 +1,7 @@
+
+# Compiled output
+dist/
+
+# Logs
+logs/
+*.log

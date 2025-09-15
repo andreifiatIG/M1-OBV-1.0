@@ -15,29 +15,27 @@ import { errorHandler, notFoundHandler, timeoutHandler } from './middleware/erro
 import { warmCache } from './middleware/cache';
 
 // Import routers
-import villaRouter from './routes/villas';
-import ownerRouter from './routes/owners';
-import staffRouter from './routes/staff';
-import documentRouter from './routes/documents';
-import photoRouter from './routes/photos';
-import facilityRouter from './routes/facilities';
-import facilityPhotosRouter from './routes/facilityPhotos';
-import onboardingRouter from './routes/onboarding';
-import onboardingBackupRouter from './routes/onboarding-backup';
-import authRouter from './routes/auth';
-import dashboardRouter from './routes/dashboard';
-import analyticsRouter from './routes/analytics';
-import bankRouter from './routes/bank';
-import otaRouter from './routes/ota';
-import testRouter from './routes/test';
-import sharePointRouter from './routes/sharepoint';
-import usersRouter from './routes/users';
-import sharepointTestRouter from './routes/sharepoint-test';
-import fileServerRouter from './routes/fileServer';
+import villaRouter from './routes/villa-management/villas';
+import ownerRouter from './routes/villa-management/owners';
+import staffRouter from './routes/villa-management/staff';
+import documentRouter from './routes/media/documents';
+import photoRouter from './routes/media/photos';
+import facilityRouter from './routes/villa-management/facilities';
+import facilityPhotosRouter from './routes/villa-management/facilityPhotos';
+import onboardingRouter from './routes/onboarding/onboarding';
+import onboardingBackupRouter from './routes/onboarding/onboarding-backup';
+// authRouter removed - was empty, deleted during cleanup
+import dashboardRouter from './routes/admin/dashboard';
+import bankRouter from './routes/villa-management/bank';
+import otaRouter from './routes/integrations/ota';
+import sharePointRouter from './routes/integrations/sharepoint';
+import usersRouter from './routes/auth-user/users';
+// sharepointTestRouter removed - file deleted during cleanup
+import fileServerRouter from './routes/media/fileServer';
 
 // Enhanced media routes with thumbnails and SharePoint
-import photosEnhancedRouter from './routes/photos-enhanced';
-import documentsEnhancedRouter from './routes/documents-enhanced';
+import photosEnhancedRouter from './routes/media/photos-enhanced';
+import documentsEnhancedRouter from './routes/media/documents-enhanced';
 
 // Load environment variables
 dotenv.config();
@@ -131,7 +129,7 @@ app.get('/health', (req: Request, res: Response) => {
 });
 
 // API Routes
-app.use('/api/auth', authRouter);
+// Empty auth route removed during cleanup
 app.use('/api/villas', villaRouter);
 app.use('/api/owners', ownerRouter);
 app.use('/api/staff', staffRouter);
@@ -149,13 +147,11 @@ app.use('/api/facility-photos', facilityPhotosRouter);
 app.use('/api/onboarding', onboardingRouter);
 app.use('/api/onboarding/backup', onboardingBackupRouter);
 app.use('/api/dashboard', dashboardRouter);
-app.use('/api/analytics', analyticsRouter);
 app.use('/api/bank', bankRouter);
 app.use('/api/ota', otaRouter);
-app.use('/api/test', testRouter);
 app.use('/api/sharepoint', sharePointRouter);
 app.use('/api/users', usersRouter);
-app.use('/api/sharepoint-test', sharepointTestRouter);
+// Sharepoint test route removed during cleanup
 app.use('/api/files', fileServerRouter);
 
 // ElectricSQL WebSocket endpoint

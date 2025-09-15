@@ -87,29 +87,6 @@ services:
       timeout: 10s
       retries: 3
 
-  # ElectricSQL for real-time sync
-  electric:
-    image: electricsql/electric:latest
-    container_name: villa-electric
-    restart: unless-stopped
-    environment:
-      DATABASE_URL: "postgresql://${DATABASE_USER}:${DATABASE_PASSWORD}@postgres:5432/${DATABASE_NAME:-ils_m1_villa_management}"
-      ELECTRIC_WRITE_TO_PG_MODE: "direct_writes"
-      AUTH_MODE: "insecure"
-      ELECTRIC_PORT: 3000
-    ports:
-      - "${ELECTRIC_PORT:-3000}:3000"
-    networks:
-      - villa-network
-    depends_on:
-      postgres:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/status"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
   # Backend API
   backend:
     build:
