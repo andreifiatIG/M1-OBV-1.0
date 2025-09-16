@@ -18,8 +18,6 @@ export { default as photoRouter } from './media/photos';
 // Onboarding
 export { default as onboardingRouter } from './onboarding/onboarding';
 
-// Admin
-export { default as dashboardRouter } from './admin/dashboard';
 
 // Integrations
 export { default as otaRouter } from './integrations/ota';

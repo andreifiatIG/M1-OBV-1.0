@@ -1,4 +1,11 @@
 // API Client for PostgreSQL Backend (Client-side only)
+import {
+  canonicalizeStepData,
+  safeValidateStepPayload,
+  validateStepPayload,
+  type OnboardingStep,
+} from '@contract/onboardingContract';
+import { assertOnboardingStep } from './data-mapper';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001';
 
@@ -7,6 +14,11 @@ export interface ApiResponse<T = any> {
   data?: T;
   error?: string;
   message?: string;
+  status?: number;    // HTTP status code
+  offline?: boolean;  // Offline mode indicator
+  version?: number;
+  retryAfter?: number | null;
+  [key: string]: any;
 }
 
 // Get Clerk token helper
@@ -239,13 +251,22 @@ export class ClientApiClient {
         
         return {
           success: false,
-          error: (data && data.error) || `HTTP error! status: ${response.status}`,
+          error: (data && (data.error || data.message)) || `HTTP error! status: ${response.status}`,
+          status: response.status,
+          ...data,
         };
+      }
+
+      const payload = data && Object.prototype.hasOwnProperty.call(data, 'data') ? data.data : data;
+      const metadata = { ...data };
+      if (metadata && Object.prototype.hasOwnProperty.call(metadata, 'data')) {
+        delete metadata.data;
       }
 
       return {
         success: true,
-        data: data.data || data,
+        data: payload,
+        ...metadata,
       };
     } catch (error) {
       // Handle network errors more gracefully
@@ -590,32 +611,82 @@ export class ClientApiClient {
     });
   }
 
-  async saveOnboardingStep(villaId: string, step: number, data: any, isAutoSave?: boolean) {
-    const headers: any = {};
-    if (isAutoSave) {
-      headers['X-Auto-Save'] = 'true';
-    }
-    
-    // Always validate to determine completion state conservatively
-    let completed = false;
+  async saveOnboardingStep(villaId: string, step: number, data: any, options: { version?: number } = {}) {
+    const typedStep: OnboardingStep = assertOnboardingStep(step);
+
+    let normalizedPayload: any;
     try {
-      const { validateStepData } = await import('../components/onboarding/stepConfig');
-      const validation = validateStepData(step, data);
-      completed = validation.isValid && Object.keys(validation.errors).length === 0;
-      console.log(`✅ Validation for step ${step}:`, {
-        isAutoSave: !!isAutoSave,
-        isValid: validation.isValid,
-        errorCount: Object.keys(validation.errors).length,
-        completed
-      });
+      const canonical = canonicalizeStepData(typedStep, data);
+      normalizedPayload = validateStepPayload(typedStep, canonical, false);
     } catch (error) {
-      console.warn('Could not validate step data for completion check. Proceeding without completion flag.', error);
-      completed = false;
+      console.warn('Failed to normalize onboarding payload, sending raw data as fallback', {
+        step,
+        error,
+      });
+      normalizedPayload = data;
     }
-    
+
+    let completed = false;
+    let payloadForRequest = normalizedPayload;
+    const completionCheck = safeValidateStepPayload(typedStep, normalizedPayload, true);
+    if (completionCheck.success) {
+      completed = true;
+      payloadForRequest = completionCheck.data;
+    } else {
+      console.warn('Step data not yet complete, deferring completion flag', {
+        step,
+        errors: completionCheck.errors,
+      });
+    }
+
     return this.request(`/api/onboarding/${villaId}/step`, {
       method: 'PUT',
-      body: JSON.stringify({ step, data, completed, isAutoSave }),
+      body: JSON.stringify({
+        step: typedStep,
+        data: payloadForRequest,
+        completed,
+        isAutoSave: false,
+        clientTimestamp: new Date().toISOString(),
+        operationId: Date.now(),
+        version: options.version,
+      }),
+    });
+  }
+
+  async autoSaveOnboardingStep(
+    villaId: string,
+    step: number,
+    data: any,
+    version: number,
+    metadata: { operationId?: string | number; clientTimestamp?: string } = {}
+  ) {
+    const headers: any = {
+      'X-Auto-Save': 'true',
+      'If-Match': version.toString(),
+    };
+
+    const typedStep: OnboardingStep = assertOnboardingStep(step);
+
+    let normalizedPayload: any;
+    try {
+      const canonical = canonicalizeStepData(typedStep, data);
+      normalizedPayload = validateStepPayload(typedStep, canonical, false);
+    } catch (error) {
+      console.warn('Failed to normalize onboarding payload for auto-save, using raw data', {
+        step,
+        error,
+      });
+      normalizedPayload = data;
+    }
+
+    return this.request(`/api/onboarding/${villaId}/step/${typedStep}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        data: normalizedPayload,
+        version,
+        clientTimestamp: metadata.clientTimestamp || new Date().toISOString(),
+        operationId: metadata.operationId ?? `${Date.now()}-${typedStep}`,
+      }),
       headers,
     });
   }

@@ -91,11 +91,27 @@ class MicrosoftGraphService {
   private authProvider: ClientCredentialAuthProvider | null = null;
   private isInitialized = false;
 
+  private isEnabled(): boolean {
+    const flag = process.env.ENABLE_MICROSOFT_GRAPH;
+    if (flag && flag.toLowerCase() === 'false') {
+      return false;
+    }
+    return true;
+  }
+
   /**
    * Initialize Microsoft Graph client
    */
   async initialize(): Promise<void> {
     try {
+      if (!this.isEnabled()) {
+        logger.warn('[Graph] Initialization skipped because ENABLE_MICROSOFT_GRAPH=false');
+        this.client = null;
+        this.authProvider = null;
+        this.isInitialized = false;
+        return;
+      }
+
       const clientId = process.env.AZURE_CLIENT_ID;
       const clientSecret = process.env.AZURE_CLIENT_SECRET;
       const tenantId = process.env.AZURE_TENANT_ID;
@@ -615,6 +631,7 @@ class MicrosoftGraphService {
     return {
       initialized: this.isInitialized,
       hasClient: this.client !== null,
+      enabled: this.isEnabled(),
     };
   }
 

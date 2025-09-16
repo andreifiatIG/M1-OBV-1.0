@@ -9,11 +9,14 @@
  * - User interaction patterns
  */
 
+// Type alias for logging data
+type LogData = Record<string, unknown> | string | number | boolean | null;
+
 interface LogEvent {
   timestamp: string;
   step: number | string;
   event: string;
-  data?: any;
+  data?: LogData;
   duration?: number;
   userId?: string;
   villaId?: string;
@@ -27,6 +30,22 @@ interface PerformanceMetrics {
   errors: LogEvent[];
 }
 
+interface PerformanceReport {
+  summary: {
+    totalEvents: number;
+    totalErrors: number;
+    avgStepLoadTime: number;
+    avgAutoSaveTime: number;
+    avgDataFetchTime: number;
+  };
+  stepPerformance: Record<number, number>;
+  autoSavePerformance: Record<string, number>;
+  dataFetchPerformance: Record<string, number>;
+  errors: LogEvent[];
+  userInteractions: number;
+  recentEvents: LogEvent[];
+}
+
 class OnboardingLogger {
   private static instance: OnboardingLogger;
   private events: LogEvent[] = [];
@@ -37,7 +56,7 @@ class OnboardingLogger {
     userInteractions: [],
     errors: []
   };
-  private startTimes: Map<string, number> = new Map();
+  private readonly startTimes: Map<string, number> = new Map();
   
   static getInstance(): OnboardingLogger {
     if (!OnboardingLogger.instance) {
@@ -46,7 +65,7 @@ class OnboardingLogger {
     return OnboardingLogger.instance;
   }
 
-  public log(step: number | string, event: string, data?: any, duration?: number) {
+  public log(step: number | string, event: string, data?: LogData, duration?: number) {
     const logEvent: LogEvent = {
       timestamp: new Date().toISOString(),
       step,
@@ -69,7 +88,7 @@ class OnboardingLogger {
   private getCurrentUserId(): string | undefined {
     // This would integrate with your auth system
     try {
-      return (window as any).__CLERK_USER_ID__;
+      return (window as { __CLERK_USER_ID__?: string }).__CLERK_USER_ID__;
     } catch {
       return undefined;
     }
@@ -159,7 +178,7 @@ class OnboardingLogger {
   }
 
   // Error Tracking
-  trackError(stepNumber: number | string, error: Error | string, context?: any) {
+  trackError(stepNumber: number | string, error: Error | string, context?: LogData) {
     const errorData = {
       message: error instanceof Error ? error.message : error,
       stack: error instanceof Error ? error.stack : undefined,
@@ -205,7 +224,7 @@ class OnboardingLogger {
   }
 
   // Bedroom Configuration Tracking
-  trackBedroomConfiguration(stepNumber: number, bedrooms: any[]) {
+  trackBedroomConfiguration(stepNumber: number, bedrooms: Record<string, unknown>[]) {
     this.log(stepNumber, 'BEDROOM_CONFIG_UPDATE', {
       bedroomCount: bedrooms.length,
       bedrooms: bedrooms.map(b => ({ name: b.name, bedType: b.bedType }))
@@ -222,7 +241,7 @@ class OnboardingLogger {
   }
 
   // Generate Performance Report
-  generatePerformanceReport(): any {
+  generatePerformanceReport(): PerformanceReport {
     const report = {
       summary: {
         totalEvents: this.events.length,

@@ -15,6 +15,7 @@ interface ProgressTrackerProps {
   completedSteps: number[];
   onStepClick: (stepNumber: number) => void;
   onboardingData?: any;
+  validationSummary?: Record<number, { errors: number; warnings: number }>;
 }
 
 export default function ProgressTracker({
@@ -23,6 +24,7 @@ export default function ProgressTracker({
   completedSteps,
   onStepClick,
   onboardingData,
+  validationSummary,
 }: ProgressTrackerProps) {
   return (
     <nav className="w-full" role="navigation" aria-label="Onboarding progress">
@@ -50,6 +52,9 @@ export default function ProgressTracker({
           <div className="bg-transparent px-8 py-6">
             <ol className="flex items-start justify-center" role="list">
               {steps.map((step, index) => {
+                const validation = validationSummary?.[step.id];
+                const hasErrors = (validation?.errors || 0) > 0;
+                const hasWarnings = !hasErrors && (validation?.warnings || 0) > 0;
                 const stepHasData = onboardingData && (() => {
                   const stepConfig = steps.find(s => s.id === step.id);
                   if (!stepConfig) return false;
@@ -74,8 +79,12 @@ export default function ProgressTracker({
                         aria-current={isCurrent ? 'step' : undefined}
                         aria-describedby={`step-${step.id}-title`}
                         className={`
-                          w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-500 shadow-sm flex-shrink-0 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transform
-                          ${isCompleted
+                          relative w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-500 shadow-sm flex-shrink-0 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transform
+                          ${hasErrors
+                            ? 'bg-gradient-to-br from-red-500 to-red-600 text-white animate-pulse'
+                            : hasWarnings
+                            ? 'bg-gradient-to-br from-amber-400 to-amber-500 text-white'
+                            : isCompleted
                             ? 'bg-gradient-to-br from-[#009990] to-[#007a6b] text-white hover:shadow-lg hover:scale-110'
                             : isCurrent
                             ? 'bg-gradient-to-br from-[#009990] to-[#007a6b] text-white ring-2 ring-[#009990]/30 hover:shadow-md hover:scale-105'
@@ -84,11 +93,11 @@ export default function ProgressTracker({
                             : 'bg-gradient-to-br from-slate-400 to-slate-500 text-white cursor-not-allowed opacity-60'
                           }
                         `}
-                      >
-                        {isCompleted ? (
-                          <CheckIcon 
-                            className="w-4 h-4 animate-in zoom-in duration-300" 
-                            aria-hidden="true" 
+                        >
+                          {isCompleted ? (
+                            <CheckIcon 
+                              className="w-4 h-4 animate-in zoom-in duration-300" 
+                              aria-hidden="true" 
                             style={{ animationDelay: '0.1s' }}
                           />
                         ) : (
@@ -99,7 +108,12 @@ export default function ProgressTracker({
                             {step.id}
                           </span>
                         )}
-                      </button>
+                        </button>
+                        {validation && (validation.errors > 0 || validation.warnings > 0) && (
+                          <span className={`mt-1 text-[10px] font-semibold ${validation.errors > 0 ? 'text-red-600' : 'text-amber-600'}`}>
+                            {validation.errors > 0 ? `${validation.errors} error${validation.errors > 1 ? 's' : ''}` : `${validation.warnings} warning${validation.warnings > 1 ? 's' : ''}`}
+                          </span>
+                        )}
                       
                       {/* Step Title */}
                       <div className="mt-2 h-8 flex items-center">

@@ -431,29 +431,8 @@ export default function DashboardPage() {
             </div>
             
             <div className="flex items-center gap-3">
-              {/* Admin Controls - Show for admin/manager users */}
-              {(user?.publicMetadata?.role === 'admin' || 
-                user?.publicMetadata?.role === 'manager' || 
-                user?.unsafeMetadata?.role === 'admin' || 
-                user?.unsafeMetadata?.role === 'manager') && (
-                <>
-                  <button
-                    onClick={() => router.push('/admin/approvals')}
-                    className="flex items-center gap-2 px-4 py-2 bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 transition-colors border border-purple-200"
-                  >
-                    <CheckCircle className="w-4 h-4" />
-                    Pending Approvals
-                  </button>
-                  <button
-                    onClick={() => router.push('/admin/users')}
-                    className="flex items-center gap-2 px-4 py-2 bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition-colors border border-green-200"
-                  >
-                    <Users className="w-4 h-4" />
-                    User Management
-                  </button>
-                </>
-              )}
-              
+              {/* Admin Controls removed - focusing on main functionality */}
+
               <button
                 onClick={handleRefresh}
                 disabled={refreshing}

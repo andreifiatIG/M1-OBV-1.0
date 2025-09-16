@@ -18,6 +18,7 @@ interface ValidationContextType {
   validateStep: (stepNumber: number, data: any) => Promise<{ isValid: boolean; errors: Record<string, FieldError>; warnings: Record<string, FieldError> }>;
   clearFieldError: (stepNumber: number, fieldName: string) => void;
   clearStepErrors: (stepNumber: number) => void;
+  applyBackendErrors: (stepNumber: number, backendErrors: Record<string, string | string[]>) => void;
   getFieldError: (stepNumber: number, fieldName: string) => FieldError | null;
   getStepErrors: (stepNumber: number) => Record<string, FieldError>;
   isFieldValid: (stepNumber: number, fieldName: string) => boolean;
@@ -261,6 +262,37 @@ export const ValidationProvider: React.FC<ValidationProviderProps> = ({
     }));
   }, []);
 
+  const applyBackendErrors = useCallback((stepNumber: number, backendErrors: Record<string, string | string[]>) => {
+    const formatted: Record<string, FieldError> = {};
+
+    Object.entries(backendErrors).forEach(([field, message]) => {
+      if (message === undefined || message === null) {
+        return;
+      }
+
+      const text = Array.isArray(message) ? message.join(', ') : message;
+      const key = field && field.length > 0 ? field : '_step';
+
+      formatted[key] = {
+        message: text || 'Invalid value',
+        code: 'BACKEND_VALIDATION_ERROR',
+        timestamp: Date.now(),
+      };
+    });
+
+    if (Object.keys(formatted).length === 0) {
+      return;
+    }
+
+    setErrors(prev => ({
+      ...prev,
+      [stepNumber]: {
+        ...(prev[stepNumber] || {}),
+        ...formatted,
+      },
+    }));
+  }, []);
+
   const getFieldError = useCallback((stepNumber: number, fieldName: string): FieldError | null => {
     return errors[stepNumber]?.[fieldName] || null;
   }, [errors]);
@@ -286,6 +318,7 @@ export const ValidationProvider: React.FC<ValidationProviderProps> = ({
     validateStep,
     clearFieldError,
     clearStepErrors,
+    applyBackendErrors,
     getFieldError,
     getStepErrors,
     isFieldValid,

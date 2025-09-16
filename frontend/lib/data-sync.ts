@@ -14,7 +14,7 @@ export interface VillaProgressData {
   currentStep: number;
   totalSteps: number;
   completedSteps: number[];
-  stepData: Record<string, any>;
+  stepData: Record<string, unknown>;
   progressPercentage: number;
   lastUpdatedAt: string;
 }
@@ -31,8 +31,8 @@ export interface OwnerData {
 }
 
 export class DataSyncManager {
-  private api: ClientApiClient;
-  private syncStatusCallbacks: Map<string, (status: SyncStatus) => void> = new Map();
+  private readonly api: ClientApiClient;
+  private readonly syncStatusCallbacks: Map<string, (status: SyncStatus) => void> = new Map();
 
   constructor(apiClient: ClientApiClient) {
     this.api = apiClient;
@@ -119,7 +119,7 @@ export class DataSyncManager {
         const onboardingData = onboardingResponse.data;
 
         // Sync specific data points that might be out of sync
-        const syncUpdates: any = {};
+        const syncUpdates: Record<string, unknown> = {};
         let hasUpdates = false;
 
         // Check if basic villa info needs syncing

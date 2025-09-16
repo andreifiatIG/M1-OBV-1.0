@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../../server';
+import { FacilityCategory, PhotoCategory } from '@prisma/client';
 import { validateRequest } from '../../middleware/validation';
 import { authMiddleware } from '../../middleware/auth';
 import { photoUpload, handleMulterError, getFileUrl, deleteFile, getFileInfo, storePhoto } from '../../middleware/upload';
@@ -32,6 +33,13 @@ const createPhotoSchema = z.object({
 });
 
 const updatePhotoSchema = createPhotoSchema.partial();
+
+const facilityUploadSchema = z.object({
+  villaId: z.string().uuid(),
+  facilityCategory: z.nativeEnum(FacilityCategory).or(z.string().min(1)),
+  facilityItemName: z.string().min(1),
+  facilityItemId: z.string().uuid().optional(),
+});
 
 // GET /api/photos - Get all photos with pagination and filtering
 router.get('/', authMiddleware, async (req: Request, res: Response) => {
@@ -860,6 +868,11 @@ router.post(
 
         // Fallback to SharePoint if database storage fails
         try {
+          const sharePointStatus = sharePointService.getStatus();
+          if (!sharePointStatus.enabled) {
+            throw new Error('SharePoint integration disabled');
+          }
+
           // Create temporary file for SharePoint upload
           const tempFilePath = path.join(process.cwd(), 'temp', file.originalname);
           
@@ -1060,33 +1073,37 @@ router.post(
   '/upload-facility',
   fileUploadRateLimit,
   authMiddleware,
-  sharePointUpload.array('photos', 20), // Max 20 photos per facility item
+  sharePointUpload.array('photos', 20),
   async (req: Request, res: Response) => {
     try {
       const files = req.files as Express.Multer.File[];
-      const { 
-        villaId, 
-        facilityCategory: rawFacilityCategory, 
-        facilityItemName, 
-        facilityItemId,
-        tags = '[]' 
-      } = req.body;
-
-      // Convert frontend kebab-case to database underscore format
-      const facilityCategory = rawFacilityCategory?.replace(/-/g, '_');
-      
-      if (rawFacilityCategory !== facilityCategory) {
-        logger.info(`Category format conversion: "${rawFacilityCategory}" → "${facilityCategory}"`);
-      }
-
       if (!files || files.length === 0) {
         return res.status(400).json({ error: 'No photos uploaded' });
       }
 
-      if (!villaId || !facilityCategory || !facilityItemName) {
-        return res.status(400).json({ 
-          error: 'Villa ID, facility category, and facility item name are required' 
+      const parsedBody = facilityUploadSchema.safeParse(req.body);
+      if (!parsedBody.success) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid facility photo payload',
+          details: parsedBody.error.flatten().fieldErrors,
         });
+      }
+
+      const {
+        villaId,
+        facilityCategory: rawFacilityCategory,
+        facilityItemName,
+        facilityItemId,
+      } = parsedBody.data;
+
+      const normalizedCategory = String(rawFacilityCategory).replace(/-/g, '_');
+      const facilityCategory = Object.values(FacilityCategory).includes(normalizedCategory as FacilityCategory)
+        ? (normalizedCategory as FacilityCategory)
+        : FacilityCategory.other;
+
+      if (rawFacilityCategory !== facilityCategory) {
+        logger.info(`Category format conversion: "${rawFacilityCategory}" → "${facilityCategory}"`);
       }
 
       // Check if villa exists
@@ -1104,7 +1121,13 @@ router.post(
       const sanitizedItemName = facilityItemName.replace(/[^a-zA-Z0-9-_\s]/g, '_').replace(/\s+/g, '_');
       const facilityFolder = `Photos/Facilities/${sanitizedCategory}/${sanitizedItemName}`;
       
-      const parsedTags = Array.isArray(tags) ? tags : JSON.parse(tags || '[]');
+      const rawTags = req.body.tags ?? '[]';
+      let parsedTags: string[] = [];
+      try {
+        parsedTags = Array.isArray(rawTags) ? rawTags : JSON.parse(rawTags || '[]');
+      } catch (tagError) {
+        logger.warn('Failed to parse facility photo tags, defaulting to []', tagError);
+      }
       
       // Add facility-specific tags
       const facilityTags = [
@@ -1131,11 +1154,11 @@ router.post(
           logger.info(`[FACILITY-DB] Attempting database storage for: ${facilityFileName}`);
           
           const databaseResult = await databaseFileStorageService.storePhoto(
-            facilityFileName,
-            file.buffer,
-            file.mimetype,
             villaId,
-            'AMENITIES_FACILITIES',
+            file.buffer,
+            facilityFileName,
+            file.mimetype,
+            PhotoCategory.AMENITIES_FACILITIES,
             {
               caption: `${facilityItemName} - Photo ${index + 1}`,
               altText: `${facilityCategory} - ${facilityItemName}`,
@@ -1204,7 +1227,7 @@ router.post(
             const photo = await prisma.photo.create({
               data: {
                 villaId,
-                category: 'AMENITIES_FACILITIES',
+                category: PhotoCategory.AMENITIES_FACILITIES,
                 fileName: decodedFileName,
                 fileUrl: sharePointResult.fileUrl,
                 fileSize: sharePointResult.size,

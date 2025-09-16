@@ -25,7 +25,7 @@ import facilityPhotosRouter from './routes/villa-management/facilityPhotos';
 import onboardingRouter from './routes/onboarding/onboarding';
 import onboardingBackupRouter from './routes/onboarding/onboarding-backup';
 // authRouter removed - was empty, deleted during cleanup
-import dashboardRouter from './routes/admin/dashboard';
+// dashboardRouter removed - admin system eliminated
 import bankRouter from './routes/villa-management/bank';
 import otaRouter from './routes/integrations/ota';
 import sharePointRouter from './routes/integrations/sharepoint';
@@ -146,7 +146,7 @@ app.use('/api/facilities', facilityRouter);
 app.use('/api/facility-photos', facilityPhotosRouter);
 app.use('/api/onboarding', onboardingRouter);
 app.use('/api/onboarding/backup', onboardingBackupRouter);
-app.use('/api/dashboard', dashboardRouter);
+// app.use('/api/dashboard', dashboardRouter); // Admin dashboard route removed
 app.use('/api/bank', bankRouter);
 app.use('/api/ota', otaRouter);
 app.use('/api/sharepoint', sharePointRouter);

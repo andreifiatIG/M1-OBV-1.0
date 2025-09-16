@@ -14,7 +14,7 @@ const stepComponents = {
   7: lazy(() => import('./steps/StaffConfiguratorStep')),
   8: lazy(() => import('./steps/FacilitiesChecklistStep')),
   9: lazy(() => import('./steps/PhotoUploadStep')),
-  10: lazy(() => import('./steps/ReviewSubmitStep')),
+  10: lazy(() => import('./steps/ReviewSubmitStepEnhanced')),
 };
 
 // Preload nearby steps for better performance

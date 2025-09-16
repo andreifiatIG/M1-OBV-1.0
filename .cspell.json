@@ -1,0 +1,22 @@
+{
+  "version": "0.2",
+  "language": "en",
+  "words": [
+    "iban",
+    "vrbo",
+    "agoda",
+    "ensuite",
+    "aircon"
+  ],
+  "caseSensitive": false,
+  "allowCompoundWords": true,
+  "dictionaries": ["typescript", "node", "npm"],
+  "ignorePaths": [
+    "node_modules/**",
+    "*.min.js",
+    "dist/**",
+    "build/**",
+    ".next/**",
+    "coverage/**"
+  ]
+}

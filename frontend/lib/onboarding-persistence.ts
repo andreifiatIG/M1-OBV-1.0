@@ -1,6 +1,6 @@
 // Data persistence handler for onboarding stages
 import { logger, LogCategory } from './logger';
-import { loggedApiClient } from './api-client-logged';
+import { clientApi } from './api-client';
 
 interface PersistenceConfig {
   villaId: string;
@@ -34,7 +34,7 @@ export class OnboardingPersistence {
     logger.startGroup('load-data', 'Loading onboarding data');
     
     try {
-      const response = await loggedApiClient.loadOnboardingData(this.config.villaId);
+      const response = await clientApi.getOnboardingProgress(this.config.villaId);
       
       if (response.success && response.data) {
         this.loadedData = response.data;
@@ -236,17 +236,21 @@ export class OnboardingPersistence {
       
       switch (stage) {
         case 'staff':
-          response = await loggedApiClient.saveStaffMembers(this.config.villaId, data);
+          response = await clientApi.saveOnboardingStep(this.config.villaId, 7, data);  // Staff is step 7
           break;
         case 'facilities':
-          response = await loggedApiClient.saveFacilities(this.config.villaId, data);
+          response = await clientApi.updateFacilities(this.config.villaId, data);
           break;
         case 'documents':
         case 'photos':
-          response = await loggedApiClient.saveOnboardingStep(this.config.villaId, stage, data);
+          // Convert stage name to step number
+          const stepNumber = this.getStepNumber(stage);
+          response = await clientApi.saveOnboardingStep(this.config.villaId, stepNumber, data);
           break;
         default:
-          response = await loggedApiClient.saveOnboardingStep(this.config.villaId, stage, data);
+          // Convert stage name to step number
+          const stepNumber = this.getStepNumber(stage);
+          response = await clientApi.saveOnboardingStep(this.config.villaId, stepNumber, data);
       }
       
       if (response.success) {
@@ -298,6 +302,23 @@ export class OnboardingPersistence {
     this.saveTimers.forEach(timer => clearTimeout(timer));
     this.saveTimers.clear();
     this.pendingData.clear();
+  }
+
+  // Convert stage name to step number
+  private getStepNumber(stage: string): number {
+    const stageToStep: Record<string, number> = {
+      'villa-info': 1,
+      'owner-details': 2,
+      'contractual-details': 3,
+      'bank-details': 4,
+      'ota-credentials': 5,
+      'documents': 6,     // Documents is step 6
+      'staff': 7,         // Staff is step 7
+      'facilities': 8,    // Facilities is step 8
+      'photos': 9,        // Photos is step 9
+      'review': 10        // Review is step 10
+    };
+    return stageToStep[stage] || 1;
   }
 
   // Check if data has been modified

@@ -73,8 +73,22 @@ class SharePointService {
   /**
    * Initialize SharePoint service
    */
+  private isEnabled(): boolean {
+    const flag = process.env.ENABLE_SHAREPOINT;
+    if (flag && flag.toLowerCase() === 'false') {
+      return false;
+    }
+    return true;
+  }
+
   async initialize(): Promise<void> {
     try {
+      if (!this.isEnabled()) {
+        logger.warn('[SharePoint] Initialization skipped because ENABLE_SHAREPOINT=false');
+        this.isInitialized = false;
+        return;
+      }
+
       const siteUrl = process.env.SHAREPOINT_SITE_URL;
       const driveId = process.env.SHAREPOINT_DRIVE_ID;
       const baseFolderPath = process.env.SHAREPOINT_BASE_FOLDER || '';
@@ -605,6 +619,19 @@ class SharePointService {
     } = {}
   ): Promise<UploadResult> {
     try {
+      if (!this.isEnabled()) {
+        logger.warn('[SharePoint] uploadDocument skipped because integration disabled', { villaId, documentType, fileName });
+        return {
+          fileId: '',
+          fileName,
+          filePath: '',
+          fileUrl: '',
+          size: fileContent.length,
+          mimeType,
+          sharepointUrl: undefined,
+        };
+      }
+
       if (!this.config) {
         throw new Error('SharePoint service not initialized');
       }
@@ -749,6 +776,10 @@ class SharePointService {
     mimeType: string;
   }> {
     try {
+      if (!this.isEnabled()) {
+        throw new Error('SharePoint integration disabled');
+      }
+
       if (!this.config) {
         throw new Error('SharePoint service not initialized');
       }
@@ -785,6 +816,11 @@ class SharePointService {
    */
   async deleteDocument(sharePointFileId: string, documentId?: string): Promise<void> {
     try {
+      if (!this.isEnabled()) {
+        logger.warn('[SharePoint] deleteDocument skipped because integration disabled', { sharePointFileId });
+        return;
+      }
+
       if (!this.config) {
         throw new Error('SharePoint service not initialized');
       }
@@ -1051,6 +1087,19 @@ class SharePointService {
     mimeType: string = 'application/octet-stream'
   ): Promise<UploadResult> {
     try {
+      if (!this.isEnabled()) {
+        logger.warn('[SharePoint] uploadFile skipped because integration disabled', { villaId, fileName });
+        return {
+          fileId: '',
+          fileName,
+          filePath,
+          fileUrl: '',
+          size: fileBuffer.length,
+          mimeType,
+          sharepointUrl: undefined,
+        };
+      }
+
       if (!this.isInitialized) {
         await this.initialize();
       }
@@ -1212,12 +1261,14 @@ class SharePointService {
     siteConnected: boolean;
     driveConnected: boolean;
     config?: SharePointConfig;
+    enabled: boolean;
   } {
     return {
       initialized: this.isInitialized,
       siteConnected: this.siteInfo !== null,
       driveConnected: this.driveInfo !== null,
       config: this.config || undefined,
+      enabled: this.isEnabled(),
     };
   }
 

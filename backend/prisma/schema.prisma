@@ -340,10 +340,7 @@ model OnboardingProgress {
   documentsUploaded           Boolean          @default(false)
   reviewCompleted             Boolean          @default(false)
   status                      OnboardingStatus @default(IN_PROGRESS)
-  submittedAt                 DateTime?        // When onboarding was submitted for review
-  rejectedAt                  DateTime?        // When onboarding was rejected
-  rejectedBy                  String?          // Who rejected the onboarding
-  rejectionNotes              String?          // Rejection reason/notes
+  submittedAt                 DateTime?        // When onboarding was submitted
   createdAt                   DateTime         @default(now())
   updatedAt                   DateTime         @updatedAt
   villa                       Villa            @relation(fields: [villaId], references: [id], onDelete: Cascade)
@@ -390,6 +387,7 @@ model OnboardingStepProgress {
   dependsOnSteps    Int[]
   estimatedDuration Int?
   actualDuration    Int?
+  version           Int                 @default(0)
   createdAt         DateTime            @default(now())
   updatedAt         DateTime            @updatedAt
   villa             Villa               @relation(fields: [villaId], references: [id], onDelete: Cascade)
@@ -505,8 +503,6 @@ enum VillaStyle {
 
 enum VillaStatus {
   DRAFT
-  PENDING_REVIEW
-  APPROVED
   ACTIVE
   INACTIVE
   ARCHIVED
@@ -698,9 +694,6 @@ enum FacilityCategory {
 enum OnboardingStatus {
   NOT_STARTED
   IN_PROGRESS
-  PENDING_REVIEW
-  APPROVED
-  REJECTED
   COMPLETED
 }
 

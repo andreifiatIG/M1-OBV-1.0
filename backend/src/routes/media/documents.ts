@@ -251,6 +251,25 @@ router.post(
       const files = req.files as Express.Multer.File[];
       const { villaId, documentType = 'OTHER', description, validFrom, validUntil } = req.body;
 
+      const parseResult = createDocumentSchema.safeParse({
+        villaId,
+        documentType,
+        description,
+        validFrom: validFrom || undefined,
+        validUntil: validUntil || undefined,
+        isActive: true,
+      });
+
+      if (!parseResult.success) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid document payload',
+          details: parseResult.error.flatten().fieldErrors,
+        });
+      }
+
+      const parsedBody = parseResult.data;
+
       if (!files || files.length === 0) {
         return res.status(400).json({ error: 'No documents uploaded' });
       }
@@ -276,34 +295,36 @@ router.post(
         let sharePointResult = null;
         let fileUrl = getFileUrl(fileInfo.originalName, 'document');
         
-        try {
-          // Check if SharePoint service is available
-          const sharePointStatus = sharePointService.getStatus();
-          if (sharePointStatus.initialized) {
-            // Upload to SharePoint
-            const fileBuffer = fs.readFileSync(file.path);
-            sharePointResult = await sharePointService.uploadDocument(
-              villaId,
-              documentType,
-              fileInfo.originalName,
-              fileBuffer,
-              fileInfo.mimetype,
-              {
-                description,
-                validFrom: validFrom ? new Date(validFrom) : undefined,
-                validUntil: validUntil ? new Date(validUntil) : undefined,
-              }
-            );
+          try {
+            // Check if SharePoint service is available and enabled
+            const sharePointStatus = sharePointService.getStatus();
+            if (sharePointStatus.enabled && sharePointStatus.initialized) {
+              // Upload to SharePoint
+              const fileBuffer = file.buffer ?? fs.readFileSync(file.path);
+              sharePointResult = await sharePointService.uploadDocument(
+                villaId,
+                documentType,
+                fileInfo.originalName,
+                fileBuffer,
+                fileInfo.mimetype,
+                {
+                  description: parsedBody.description,
+                  validFrom: parsedBody.validFrom ? new Date(parsedBody.validFrom) : undefined,
+                  validUntil: parsedBody.validUntil ? new Date(parsedBody.validUntil) : undefined,
+                }
+              );
             fileUrl = sharePointResult.fileUrl;
             
             // Clean up local file after successful SharePoint upload
-            try {
-              fs.unlinkSync(file.path);
-            } catch (cleanupError) {
-              logger.warn('Failed to clean up local file:', cleanupError);
+            if (file.path) {
+              try {
+                fs.unlinkSync(file.path);
+              } catch (cleanupError) {
+                logger.warn('Failed to clean up local file:', cleanupError);
+              }
             }
           } else {
-            logger.warn('SharePoint service not available, storing locally only');
+            logger.warn('SharePoint service not available or disabled, storing locally only');
           }
         } catch (sharePointError) {
           logger.error('SharePoint upload failed, keeping local copy:', sharePointError);
@@ -317,9 +338,9 @@ router.post(
             fileUrl,
             fileSize: fileInfo.size,
             mimeType: fileInfo.mimetype,
-            description,
-            validFrom: validFrom ? new Date(validFrom) : null,
-            validUntil: validUntil ? new Date(validUntil) : null,
+            description: parsedBody.description,
+            validFrom: parsedBody.validFrom ? new Date(parsedBody.validFrom) : null,
+            validUntil: parsedBody.validUntil ? new Date(parsedBody.validUntil) : null,
             sharePointFileId: sharePointResult?.fileId || null,
             sharePointPath: sharePointResult?.filePath || null,
           },

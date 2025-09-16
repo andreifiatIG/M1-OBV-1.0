@@ -1,13 +1,22 @@
 import { PrismaClient, OnboardingStatus, VillaStatus, StepStatus, FieldStatus } from '@prisma/client';
-import { logger } from '../../utils/logger';
-import onboardingProgressService from '../admin/onboardingProgressService';
+import { logger, metricsLog } from '../../utils/logger';
+import {
+  ONBOARDING_STEPS,
+  safeValidateStepPayload,
+  type OnboardingStep,
+} from '../../shared/onboardingContract';
 
 const prisma = new PrismaClient();
+export const prismaClient = prisma;
 
 export interface OnboardingStepData {
   step: number;
   data: any;
   completed: boolean;
+  isAutoSave?: boolean;
+  clientTimestamp?: string;
+  operationId?: number;
+  version?: number;
 }
 
 export interface OnboardingValidation {
@@ -15,6 +24,18 @@ export interface OnboardingValidation {
   errors: string[];
   warnings: string[];
 }
+
+export class VersionConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'VersionConflictError';
+  }
+}
+
+type UpdateStepResult = {
+  progress: any;
+  version: number;
+};
 
 class OnboardingService {
   private readonly TOTAL_STEPS = 10;
@@ -32,6 +53,8 @@ class OnboardingService {
     10: 'review',
   };
 
+  private readonly stepQueues = new Map<string, Promise<unknown>>();
+
   // Map step numbers to actual database boolean field names
   private readonly STEP_COMPLETION_FIELDS = {
     1: 'villaInfoCompleted',
@@ -45,6 +68,29 @@ class OnboardingService {
     9: 'photosUploaded',
     10: 'reviewCompleted',
   };
+
+  private async enqueueStepOperation<T>(villaId: string, step: number, operation: () => Promise<T>): Promise<T> {
+    const key = `${villaId}:${step}`;
+    const previous = this.stepQueues.get(key) ?? Promise.resolve();
+    const nextPromise = previous
+      .catch(() => undefined)
+      .then(operation);
+
+    this.stepQueues.set(key, nextPromise as Promise<unknown>);
+
+    try {
+      const result = await nextPromise;
+      if (this.stepQueues.get(key) === nextPromise) {
+        this.stepQueues.delete(key);
+      }
+      return result;
+    } catch (error) {
+      if (this.stepQueues.get(key) === nextPromise) {
+        this.stepQueues.delete(key);
+      }
+      throw error;
+    }
+  }
 
   /**
    * Get progress status based on completion percentage
@@ -472,6 +518,11 @@ class OnboardingService {
         logger.warn(`[BEDROOM] Backend: No bedroom data found in step 9 field progress for villa ${villaId}`);
       }
       
+      const stepVersions = (progress.villa?.stepProgress || []).reduce((acc, step) => {
+        acc[step.stepNumber] = step.version ?? 0;
+        return acc;
+      }, {} as Record<number, number>);
+
       const enhancedVilla = progress.villa ? {
         ...progress.villa,
         fieldProgress: step9FieldProgress // Add step 9 field progress for photos/bedrooms
@@ -486,6 +537,7 @@ class OnboardingService {
         currentStepValidation: validation,
         stepDetails: this.getStepDetails(progress),
         fieldProgress, // Include all field progress for reference
+        stepVersions,
         // NEW: Enhanced step-by-step progress details
         stepCompletionDetails: dataBasedCompletion.stepCompletionDetails,
         legacyProgress: {
@@ -522,7 +574,7 @@ class OnboardingService {
   async initializeEnhancedProgress(villaId: string, userId: string, userEmail?: string) {
     try {
       // Initialize the onboarding progress service for this villa
-      await onboardingProgressService.initializeVillaProgress(villaId, userId, userEmail);
+      // await onboardingProgressService.initializeVillaProgress(villaId, userId, userEmail); // Admin system removed
       logger.info(`Enhanced progress tracking initialized for villa ${villaId}`);
     } catch (error) {
       logger.error('Error initializing enhanced progress tracking:', error);
@@ -534,56 +586,91 @@ class OnboardingService {
    * Update onboarding step
    */
   async updateStep(villaId: string, stepData: OnboardingStepData, userId?: string) {
+    return this.enqueueStepOperation(villaId, stepData.step, () => this.performStepUpdate(villaId, stepData, userId));
+  }
+
+  private async performStepUpdate(villaId: string, stepData: OnboardingStepData, userId?: string): Promise<UpdateStepResult> {
     try {
-      const { step, data, completed } = stepData;
-      
+      const { step, data, completed, isAutoSave, clientTimestamp, operationId, version } = stepData;
+
+      if (!ONBOARDING_STEPS.includes(step as OnboardingStep)) {
+        throw new Error(`Invalid step number: ${step}. Must be between 1 and ${this.TOTAL_STEPS}.`);
+      }
+
+      const typedStep = step as OnboardingStep;
+
+      const operationMeta = {
+        operationId: operationId !== undefined ? String(operationId) : undefined,
+        clientTimestamp,
+      };
+
       logger.info(`[UPDATE] updateStep called for villa ${villaId}, step ${step}`, {
         dataKeys: data ? Object.keys(data) : [],
         completed,
-        userId
+        userId,
+        isAutoSave: isAutoSave === true,
+        clientTimestamp,
+        operationId,
+        version,
       });
 
-      // Check if step is being skipped
+      metricsLog('onboarding.step_update', 1, {
+        villaId,
+        step: String(step),
+        autoSave: String(isAutoSave === true),
+        operationId: operationMeta.operationId,
+      });
+
+      const stepProgress = await this.ensureStepProgressRecord(villaId, typedStep);
+      const currentVersion = stepProgress?.version ?? 0;
+
+      if (version !== undefined && version !== currentVersion) {
+        throw new VersionConflictError(`Version mismatch for villa ${villaId}, step ${step}. Expected ${currentVersion}, received ${version}.`);
+      }
+
       const isSkipped = data?.skipped === true;
-      
-      // Debug logging for step update
       logger.info(`[STEP_UPDATE] Villa ${villaId}, Step ${step}, Completed: ${completed}, Skipped: ${isSkipped}`);
       logger.info(`[STEP_UPDATE] Raw data received:`, JSON.stringify(data, null, 2));
 
-      // Validate step data only if not skipped
+      let normalizedData = data;
       if (!isSkipped) {
-        const validation = await this.validateStepData(villaId, step, data);
-        if (!validation.isValid && completed) {
-          throw new Error(`Step ${step} validation failed: ${validation.errors.join(', ')}`);
+        const schemaValidation = safeValidateStepPayload(typedStep, data, completed && !isAutoSave);
+        if (!schemaValidation.success) {
+          throw new Error(`Step ${step} validation failed: ${schemaValidation.errors.join(', ')}`);
+        }
+        normalizedData = schemaValidation.data;
+
+        const domainValidation = await this.validateStepData(villaId, step, normalizedData);
+        if (!domainValidation.isValid && completed && !isAutoSave) {
+          throw new Error(`Step ${step} validation failed: ${domainValidation.errors.join(', ')}`);
         }
       }
 
-      // Update the specific step data
-      await this.saveStepData(villaId, step, data, userId);
+      await this.saveStepData(villaId, step, normalizedData, userId);
 
-      // Update enhanced progress tracking
       if (userId) {
-        await this.updateEnhancedProgress(villaId, step, data, completed, isSkipped, userId);
+        await this.updateEnhancedProgress(villaId, step, normalizedData, completed, isSkipped, userId, isAutoSave === true);
       }
 
-      // Update progress using correct database field names
       const updateData: any = {};
       const stepCompletionField = this.STEP_COMPLETION_FIELDS[step as keyof typeof this.STEP_COMPLETION_FIELDS];
-      
+
       if (!stepCompletionField) {
         throw new Error(`Invalid step number: ${step}. Must be between 1 and ${this.TOTAL_STEPS}.`);
       }
-      
-      logger.info(`Updating completion field '${stepCompletionField}' to ${completed} for villa ${villaId}, step ${step}`);
-      updateData[stepCompletionField] = completed;
 
-      // Auto-advance to next step if current step is completed
-      if (completed) {
-        updateData.currentStep = Math.min(step + 1, this.TOTAL_STEPS);
-        logger.info(`Auto-advancing villa ${villaId} to step ${updateData.currentStep}`);
+      if (!isAutoSave) {
+        logger.info(`Updating completion field '${stepCompletionField}' to ${completed} for villa ${villaId}, step ${step}`);
+        updateData[stepCompletionField] = completed;
+
+        if (completed) {
+          updateData.currentStep = Math.min(step + 1, this.TOTAL_STEPS);
+          logger.info(`Auto-advancing villa ${villaId} to step ${updateData.currentStep}`);
+        }
+      } else {
+        logger.debug(`Auto-save update received for villa ${villaId}, step ${step}; completion status unchanged.`);
       }
 
-      // Ensure OnboardingProgress exists before updating
       const existingProgress = await prisma.onboardingProgress.findUnique({
         where: { villaId }
       });
@@ -592,36 +679,87 @@ class OnboardingService {
         throw new Error(`OnboardingProgress not found for villa ${villaId}. Please initialize onboarding first.`);
       }
 
-      const progress = await prisma.onboardingProgress.update({
-        where: { villaId },
-        data: updateData,
-        include: {
-          villa: true,
-        },
-      });
-      
+      let progressRecord;
+      if (Object.keys(updateData).length > 0) {
+        progressRecord = await prisma.onboardingProgress.update({
+          where: { villaId },
+          data: updateData,
+          include: {
+            villa: true,
+          },
+        });
+      } else {
+        progressRecord = await prisma.onboardingProgress.findUnique({
+          where: { villaId },
+          include: {
+            villa: true,
+          },
+        });
+      }
+
+      if (!progressRecord) {
+        throw new Error(`Failed to load onboarding progress for villa ${villaId}`);
+      }
+
       logger.info(`Successfully updated onboarding progress for villa ${villaId}:`, {
         stepCompletionField,
         completed,
-        currentStep: progress.currentStep,
-        completedStepsCount: this.countCompletedSteps(progress)
+        currentStep: progressRecord.currentStep,
+        completedStepsCount: this.countCompletedSteps(progressRecord),
+        operationId: operationMeta.operationId,
+        clientTimestamp,
       });
 
-      // Check if all steps are completed
-      const completedStepsCount = this.countCompletedSteps(progress);
+      const nextVersion = (currentVersion ?? 0) + 1;
+      await prisma.onboardingStepProgress.update({
+        where: {
+          villaId_stepNumber: {
+            villaId,
+            stepNumber: step,
+          },
+        },
+        data: {
+          version: nextVersion,
+        },
+      });
+
+      const completedStepsCount = this.countCompletedSteps(progressRecord);
       logger.info(`Villa ${villaId} has ${completedStepsCount}/${this.TOTAL_STEPS} steps completed`);
-      
-if (completedStepsCount === this.TOTAL_STEPS) {
+
+      if (!isAutoSave && completedStepsCount === this.TOTAL_STEPS) {
         logger.info(`All steps completed for villa ${villaId}, completing onboarding`);
         await this.completeOnboarding(villaId);
       }
 
       logger.info(`Onboarding step ${step} updated for villa ${villaId}`);
-      return progress;
+      return { progress: progressRecord, version: nextVersion };
     } catch (error) {
       logger.error('Error updating onboarding step:', error);
       throw error;
     }
+  }
+
+  private async ensureStepProgressRecord(villaId: string, stepNumber: OnboardingStep) {
+    const stepName = this.STEP_NAMES[stepNumber as keyof typeof this.STEP_NAMES] || `step${stepNumber}`;
+
+    return prisma.onboardingStepProgress.upsert({
+      where: {
+        villaId_stepNumber: {
+          villaId,
+          stepNumber,
+        },
+      },
+      update: {},
+      create: {
+        villaId,
+        stepNumber,
+        stepName,
+        status: 'NOT_STARTED',
+        dependsOnSteps: [],
+        estimatedDuration: null,
+        actualDuration: null,
+      },
+    });
   }
 
   /**
@@ -633,7 +771,8 @@ if (completedStepsCount === this.TOTAL_STEPS) {
     stepData: any, 
     completed: boolean, 
     isSkipped: boolean, 
-    userId: string
+    userId: string,
+    isAutoSave?: boolean
   ) {
     try {
       // Update step progress
@@ -656,6 +795,8 @@ if (completedStepsCount === this.TOTAL_STEPS) {
           stepStatus = 'SKIPPED';
         } else if (completed) {
           stepStatus = 'COMPLETED';
+        } else if (isAutoSave && stepProgress.status === 'COMPLETED') {
+          stepStatus = 'COMPLETED';
         }
 
         await prisma.onboardingStepProgress.update({
@@ -663,9 +804,9 @@ if (completedStepsCount === this.TOTAL_STEPS) {
           data: {
             status: stepStatus,
             startedAt: stepProgress.startedAt || new Date(),
-            completedAt: completed ? new Date() : null,
+            completedAt: (completed || (isAutoSave && stepProgress.completedAt)) ? (completed ? new Date() : stepProgress.completedAt) : null,
             skippedAt: isSkipped ? new Date() : null,
-            isValid: completed || isSkipped,
+            isValid: completed || isSkipped || (isAutoSave && stepProgress.isValid),
             lastUpdatedAt: new Date()
           }
         });
@@ -712,6 +853,8 @@ if (completedStepsCount === this.TOTAL_STEPS) {
               if (isSkipped) {
                 fieldStatus = 'SKIPPED';
               } else if (fieldHasValue) {
+                fieldStatus = 'COMPLETED';
+              } else if (isAutoSave && field.status === 'COMPLETED') {
                 fieldStatus = 'COMPLETED';
               } else if (field.status === 'NOT_STARTED' && stepStatus === 'IN_PROGRESS') {
                 fieldStatus = 'IN_PROGRESS';
@@ -2461,209 +2604,6 @@ async rejectOnboarding(_villaId: string, _rejectedBy: string, _reason: string) {
     ];
   }
 
-  /**
-   * Get pending approvals for admin dashboard
-   */
-  async getPendingApprovals(filters?: any, pagination?: any) {
-    try {
-      const where: any = {
-        status: {
-          in: [OnboardingStatus.PENDING_REVIEW, OnboardingStatus.IN_PROGRESS],
-        },
-      };
-
-      // Add filters
-      if (filters?.status && filters.status !== 'all') {
-        where.status = filters.status;
-      }
-
-      if (filters?.location) {
-        where.villa = {
-          ...where.villa,
-          OR: [
-            { city: { contains: filters.location, mode: 'insensitive' } },
-            { country: { contains: filters.location, mode: 'insensitive' } },
-          ],
-        };
-      }
-
-      if (filters?.search) {
-        where.villa = {
-          ...where.villa,
-          OR: [
-            { villaName: { contains: filters.search, mode: 'insensitive' } },
-            { villaCode: { contains: filters.search, mode: 'insensitive' } },
-            { owner: { firstName: { contains: filters.search, mode: 'insensitive' } } },
-            { owner: { lastName: { contains: filters.search, mode: 'insensitive' } } },
-          ],
-        };
-      }
-
-      // Calculate pagination
-      const page = pagination?.page || 1;
-      const limit = pagination?.limit || 5;
-      const skip = (page - 1) * limit;
-
-      // Get the data
-      const [approvals, total] = await Promise.all([
-        prisma.onboardingProgress.findMany({
-          where,
-          include: {
-            villa: {
-              include: {
-                owner: true,
-                photos: { 
-                  where: { isMain: true },
-                  take: 1 
-                },
-                documents: { 
-                  where: { isActive: true } 
-                },
-                staff: { 
-                  where: { isActive: true } 
-                },
-              },
-            },
-          },
-          orderBy: { updatedAt: 'desc' },
-          skip,
-          take: limit,
-        }),
-        prisma.onboardingProgress.count({ where }),
-      ]);
-
-      // Transform data to match frontend interface with enhanced data accuracy
-      const transformedApprovals = approvals.map((approval: any) => {
-        const completedSteps = this.countCompletedSteps(approval);
-        const progressPercentage = Math.round((completedSteps / this.TOTAL_STEPS) * 100);
-        
-        // Ensure we have villa data
-        if (!approval.villa) {
-          logger.warn(`Missing villa data for approval ${approval.id}`);
-          return null;
-        }
-        
-        // Calculate time since submission with proper null checking
-        const submissionDate = approval.submittedAt ? new Date(approval.submittedAt) : new Date(approval.updatedAt);
-        const daysSinceSubmission = Math.floor((Date.now() - submissionDate.getTime()) / (1000 * 60 * 60 * 24));
-        
-        return {
-          id: approval.villaId, // Use villaId as the approval ID
-          villaId: approval.villaId, // Explicit villa ID
-          villaName: approval.villa.villaName || 'Unnamed Villa',
-          villaCode: approval.villa.villaCode || 'NO-CODE',
-          ownerName: approval.villa.owner
-            ? `${approval.villa.owner.firstName || ''} ${approval.villa.owner.lastName || ''}`.trim() || 'Unknown'
-            : 'No Owner',
-          ownerEmail: approval.villa.owner?.email || 'No email provided',
-          currentStep: approval.currentStep || 1,
-          totalSteps: approval.totalSteps || this.TOTAL_STEPS,
-          stepsCompleted: completedSteps,
-          progress: progressPercentage,
-          progressStatus: this.getProgressStatus(progressPercentage),
-          status: approval.status,
-          submittedAt: approval.submittedAt || approval.updatedAt,
-          lastUpdatedAt: approval.updatedAt,
-          documentsCount: approval.villa.documents?.length || 0,
-          photosCount: approval.villa.photos?.length || 0,
-          staffCount: approval.villa.staff?.length || 0,
-          location: `${approval.villa.city || 'Unknown'}, ${approval.villa.country || 'Unknown'}`,
-          city: approval.villa.city || 'Unknown',
-          country: approval.villa.country || 'Unknown',
-          bedrooms: approval.villa.bedrooms || 0,
-          bathrooms: approval.villa.bathrooms || 0,
-          maxGuests: approval.villa.maxGuests || 0,
-          
-          // Data completeness indicators
-          hasOwnerDetails: !!approval.villa.owner,
-          hasDocuments: (approval.villa.documents?.length || 0) > 0,
-          hasPhotos: (approval.villa.photos?.length || 0) > 0,
-          hasStaff: (approval.villa.staff?.length || 0) > 0,
-          
-          // Validation status
-          isReadyForReview: progressPercentage >= 90 && approval.status === 'PENDING_REVIEW',
-          requiresAttention: progressPercentage < 70 && approval.status === 'PENDING_REVIEW',
-          
-          // Time tracking
-          daysSinceSubmission,
-        };
-      }).filter(Boolean); // Remove any null entries
-
-      return {
-        approvals: transformedApprovals,
-        pagination: {
-          page,
-          limit,
-          total,
-          totalPages: Math.ceil(total / limit),
-        },
-      };
-    } catch (error) {
-      logger.error('Error getting pending approvals:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Get approval statistics for admin dashboard
-   */
-  async getApprovalStats() {
-    try {
-      const [
-        pendingReview,
-        inProgress,
-        approved,
-        rejected,
-        totalApplications,
-        averageProgress
-      ] = await Promise.all([
-        prisma.onboardingProgress.count({
-          where: { status: OnboardingStatus.PENDING_REVIEW },
-        }),
-        prisma.onboardingProgress.count({
-          where: { status: OnboardingStatus.IN_PROGRESS },
-        }),
-        prisma.onboardingProgress.count({
-          where: { status: OnboardingStatus.APPROVED },
-        }),
-        prisma.onboardingProgress.count({
-          where: { status: OnboardingStatus.REJECTED },
-        }),
-        prisma.onboardingProgress.count(),
-        prisma.onboardingProgress.findMany({
-          select: {
-            villaInfoCompleted: true,
-            ownerDetailsCompleted: true,
-            contractualDetailsCompleted: true,
-            bankDetailsCompleted: true,
-            otaCredentialsCompleted: true,
-            staffConfigCompleted: true,
-            facilitiesCompleted: true,
-            photosUploaded: true,
-            documentsUploaded: true,
-            reviewCompleted: true,
-          },
-        }),
-      ]);
-
-      // Calculate average progress
-      const avgProgress = averageProgress.reduce((sum, progress) => {
-        return sum + this.countCompletedSteps(progress);
-      }, 0) / (averageProgress.length || 1);
-
-      return {
-        pendingReview,
-        inProgress,
-        approved,
-        rejected,
-        totalApplications,
-        averageProgress: Math.round((avgProgress / this.TOTAL_STEPS) * 100),
-      };
-    } catch (error) {
-      logger.error('Error getting approval stats:', error);
-      throw error;
-    }
-  }
 }
 
 export default new OnboardingService();

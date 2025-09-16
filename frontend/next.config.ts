@@ -12,6 +12,7 @@ const nextConfig: NextConfig = {
   experimental: {
     // Disable webpack cache for stability
     webpackBuildWorker: false,
+    externalDir: true,
   },
   webpack: (config, { dev, isServer }) => {
     // Reduce webpack cache issues in development

@@ -4,7 +4,6 @@ import { useSearchParams } from 'next/navigation';
 import { useUser } from '@clerk/nextjs';
 import { useEffect } from 'react';
 import OnboardingWizardUnified from '@/components/onboarding/OnboardingWizardUnified';
-import { OnboardingProvider } from '@/components/onboarding/OnboardingContext';
 
 export default function OnboardingPage() {
   const { user } = useUser();
@@ -26,8 +25,6 @@ export default function OnboardingPage() {
   }, [villaId, user?.id]);
 
   return (
-    <OnboardingProvider>
-      <OnboardingWizardUnified forceNewSession={newSession} />
-    </OnboardingProvider>
+    <OnboardingWizardUnified forceNewSession={newSession} />
   );
 }

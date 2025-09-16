@@ -1,7 +1,7 @@
 
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import onboardingService from "../../services/core/onboardingService";
+import onboardingService, { VersionConflictError } from "../../services/core/onboardingService";
 import { authenticate } from '../../middleware/auth';
 import { validateRequest } from '../../middleware/validation';
 import { onboardingRateLimit, onboardingReadRateLimit, onboardingCompleteRateLimit, autoSaveRateLimit} from '../../middleware/rateLimiting';
@@ -9,6 +9,12 @@ import villaService from "../../services/core/villaService";
 import { createSanitizationMiddleware, createValidationMiddleware, sanitizers, validators } from '../../middleware/sanitization';
 import { cacheMiddleware, CacheDuration, invalidateCache } from '../../middleware/cache';
 import { logger } from '../../utils/logger';
+import {
+  canonicalizeStepData,
+  ONBOARDING_STEPS,
+  safeValidateStepPayload,
+  type OnboardingStep,
+} from '../../shared/onboardingContract';
 
 const router = Router();
 
@@ -400,6 +406,10 @@ const onboardingStepSanitization = createSanitizationMiddleware({
       return sanitized;
     },
     completed: sanitizers.boolean,
+    isAutoSave: sanitizers.boolean,
+    clientTimestamp: sanitizers.text,
+    operationId: sanitizers.integer,
+    version: sanitizers.integer,
   },
 });
 
@@ -410,6 +420,7 @@ const onboardingStepValidation = createValidationMiddleware({
   body: {
     step: [validators.required, validators.integer, (v) => validators.range(v, 1, 10)],
     completed: [validators.required],
+    isAutoSave: [],
   },
 });
 
@@ -419,6 +430,10 @@ const updateStepSchema = z.object({
     step: z.number().int().min(1).max(10),
     data: z.any(),
     completed: z.boolean(),
+    isAutoSave: z.boolean().optional(),
+    clientTimestamp: z.string().optional(),
+    operationId: z.number().int().optional(),
+    version: z.number().int().optional(),
   }),
 });
 
@@ -552,17 +567,55 @@ router.put('/:villaId/step',
     const { villaId } = req.params;
     const stepData = req.body;
     const userId = req.user?.id || 'system';
-    
-    
-    const progress = await onboardingService.updateStep(villaId, stepData, userId);
-    
+
+    const numericStep = Number(stepData.step);
+    if (!ONBOARDING_STEPS.includes(numericStep as OnboardingStep)) {
+      return res.status(400).json({
+        success: false,
+        message: `Unsupported step number: ${stepData.step}`,
+      });
+    }
+
+    const typedStep = numericStep as OnboardingStep;
+    const isAutoSave = stepData.isAutoSave === true;
+    const requestVersion = typeof stepData.version === 'number' ? stepData.version : undefined;
+    const shouldEnforceRequired = Boolean(stepData.completed) && !isAutoSave && !(stepData.data?.skipped === true);
+    const validationResult = safeValidateStepPayload(typedStep, stepData.data, shouldEnforceRequired);
+
+    if (!validationResult.success) {
+      return res.status(422).json({
+        success: false,
+        message: 'Invalid step payload',
+        errors: validationResult.errors,
+      });
+    }
+
+    const normalizedStepData = {
+      step: typedStep,
+      data: validationResult.data,
+      completed: shouldEnforceRequired,
+      isAutoSave,
+      clientTimestamp: stepData.clientTimestamp,
+      operationId: stepData.operationId,
+      version: requestVersion,
+    };
+
+    const { progress, version: nextVersion } = await onboardingService.updateStep(villaId, normalizedStepData, userId);
+
     res.json({
       success: true,
       data: progress,
+      version: nextVersion,
       message: `Step ${stepData.step} updated successfully`,
     });
   } catch (error) {
     console.error('Error updating onboarding step:', error);
+    if (error instanceof VersionConflictError) {
+      return res.status(409).json({
+        success: false,
+        message: error.message,
+      });
+    }
     const message = error instanceof Error ? error.message : 'Failed to update onboarding step';
     const lower = typeof message === 'string' ? message.toLowerCase() : '';
     const status = lower.includes('not found') ? 404 : 400;
@@ -572,6 +625,76 @@ router.put('/:villaId/step',
     });
   }
 });
+
+// Idempotent auto-save endpoint supporting partial payloads via PATCH
+router.patch('/:villaId/step/:step',
+  autoSaveRateLimit,
+  authenticate,
+  async (req: Request, res: Response) => {
+    try {
+      const { villaId, step } = req.params;
+      const userId = req.user?.id || 'system';
+      const stepNumber = parseInt(step, 10);
+
+      if (isNaN(stepNumber) || !ONBOARDING_STEPS.includes(stepNumber as OnboardingStep)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid step number',
+        });
+      }
+
+      const typedStep = stepNumber as OnboardingStep;
+      const payload = req.body?.data ?? req.body?.payload ?? req.body?.stepData ?? req.body;
+      const version = typeof req.body?.version === 'number' ? req.body.version : undefined;
+
+      if (version === undefined) {
+        return res.status(400).json({
+          success: false,
+          message: 'Version is required for auto-save operations',
+        });
+      }
+
+      const validationResult = safeValidateStepPayload(typedStep, payload, false);
+
+      if (!validationResult.success) {
+        return res.status(422).json({
+          success: false,
+          message: 'Invalid step payload',
+          errors: validationResult.errors,
+        });
+      }
+
+      const { progress, version: nextVersion } = await onboardingService.updateStep(villaId, {
+        step: typedStep,
+        data: validationResult.data,
+        completed: false,
+        isAutoSave: true,
+        clientTimestamp: req.body?.clientTimestamp,
+        operationId: req.body?.operationId,
+        version,
+      }, userId);
+
+      res.json({
+        success: true,
+        data: progress,
+        version: nextVersion,
+        message: `Step ${stepNumber} auto-saved successfully`,
+      });
+    } catch (error) {
+      console.error('Error auto-saving onboarding step:', error);
+      if (error instanceof VersionConflictError) {
+        return res.status(409).json({
+          success: false,
+          message: error.message,
+        });
+      }
+
+      res.status(500).json({
+        success: false,
+        message: error instanceof Error ? error.message : 'Auto-save failed',
+      });
+    }
+  });
 
 // Validate specific step
 router.get('/:villaId/validate/:step', onboardingReadRateLimit, authenticate, async (req: Request, res: Response) => {

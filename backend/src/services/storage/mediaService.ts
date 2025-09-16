@@ -122,19 +122,24 @@ class MediaService {
       // Upload to SharePoint (async)
       let sharePointResult = null;
       try {
-        const sharePointPath = this.getSharePointPath('photos', options.category, options.subfolder);
-        sharePointResult = await sharePointService.uploadFile(
-          fileBuffer,
-          fileName,
-          sharePointPath,
-          options.villaId,
-          mimeType
-        );
-        
-        logger.info(`[MEDIA] SharePoint upload successful: ${fileName}`, {
-          sharePointId: sharePointResult?.fileId,
-          sharePointUrl: sharePointResult?.fileUrl
-        });
+        const sharePointStatus = sharePointService.getStatus();
+        if (sharePointStatus.enabled) {
+          const sharePointPath = this.getSharePointPath('photos', options.category, options.subfolder);
+          sharePointResult = await sharePointService.uploadFile(
+            fileBuffer,
+            fileName,
+            sharePointPath,
+            options.villaId,
+            mimeType
+          );
+          
+          logger.info(`[MEDIA] SharePoint upload successful: ${fileName}`, {
+            sharePointId: sharePointResult?.fileId,
+            sharePointUrl: sharePointResult?.fileUrl
+          });
+        } else {
+          logger.warn('[MEDIA] SharePoint integration disabled, skipping upload');
+        }
       } catch (sharePointError) {
         logger.warn(`[MEDIA] SharePoint upload failed for ${fileName}:`, sharePointError);
         // Continue with database storage even if SharePoint fails
@@ -224,19 +229,24 @@ class MediaService {
       // Upload to SharePoint (async)
       let sharePointResult = null;
       try {
-        const sharePointPath = this.getSharePointPath('documents', documentType);
-        sharePointResult = await sharePointService.uploadFile(
-          fileBuffer,
-          fileName,
-          sharePointPath,
-          villaId,
-          mimeType
-        );
-        
-        logger.info(`[MEDIA] SharePoint upload successful: ${fileName}`, {
-          sharePointId: sharePointResult?.fileId,
-          sharePointUrl: sharePointResult?.fileUrl
-        });
+        const sharePointStatus = sharePointService.getStatus();
+        if (sharePointStatus.enabled) {
+          const sharePointPath = this.getSharePointPath('documents', documentType);
+          sharePointResult = await sharePointService.uploadFile(
+            fileBuffer,
+            fileName,
+            sharePointPath,
+            villaId,
+            mimeType
+          );
+          
+          logger.info(`[MEDIA] SharePoint upload successful: ${fileName}`, {
+            sharePointId: sharePointResult?.fileId,
+            sharePointUrl: sharePointResult?.fileUrl
+          });
+        } else {
+          logger.warn('[MEDIA] SharePoint integration disabled, skipping upload');
+        }
       } catch (sharePointError) {
         logger.warn(`[MEDIA] SharePoint upload failed for ${fileName}:`, sharePointError);
         // Continue with database storage even if SharePoint fails

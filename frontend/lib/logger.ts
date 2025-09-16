@@ -21,12 +21,15 @@ export enum LogCategory {
   PERFORMANCE = 'PERFORMANCE',
 }
 
+// Type alias for logging data
+type LogData = Record<string, unknown> | string | number | boolean | null;
+
 interface LogEntry {
   timestamp: string;
   level: LogLevel;
   category: LogCategory;
   message: string;
-  data?: any;
+  data?: LogData;
   context?: string;
 }
 
@@ -35,9 +38,9 @@ class Logger {
   private logLevel: LogLevel;
   private enabledCategories: Set<LogCategory>;
   private logBuffer: LogEntry[] = [];
-  private maxBufferSize = 100;
-  private groupedLogs: Map<string, LogEntry[]> = new Map();
-  private isProduction: boolean;
+  private readonly maxBufferSize = 100;
+  private readonly groupedLogs: Map<string, LogEntry[]> = new Map();
+  private readonly isProduction: boolean;
 
   private constructor() {
     this.isProduction = process.env.NODE_ENV === 'production';
@@ -84,7 +87,7 @@ class Logger {
   }
 
   // Core logging method
-  private log(level: LogLevel, category: LogCategory, message: string, data?: any, context?: string) {
+  private log(level: LogLevel, category: LogCategory, message: string, data?: LogData, context?: string) {
     if (level < this.logLevel || !this.enabledCategories.has(category)) {
       return;
     }
@@ -147,13 +150,12 @@ class Logger {
       } else {
         consoleMethod(`%c${prefix}${contextStr} ${message}`, color);
       }
+    } else if (data) {
+      // Node.js or production - plain output with data
+      consoleMethod(`${prefix}${contextStr} ${message}`, data);
     } else {
-      // Node.js or production - plain output
-      if (data) {
-        consoleMethod(`${prefix}${contextStr} ${message}`, data);
-      } else {
-        consoleMethod(`${prefix}${contextStr} ${message}`);
-      }
+      // Node.js or production - plain output without data
+      consoleMethod(`${prefix}${contextStr} ${message}`);
     }
   }
 
@@ -179,28 +181,28 @@ class Logger {
   }
 
   // Public logging methods
-  debug(category: LogCategory, message: string, data?: any, context?: string) {
+  debug(category: LogCategory, message: string, data?: LogData, context?: string) {
     this.log(LogLevel.DEBUG, category, message, data, context);
   }
 
-  info(category: LogCategory, message: string, data?: any, context?: string) {
+  info(category: LogCategory, message: string, data?: LogData, context?: string) {
     this.log(LogLevel.INFO, category, message, data, context);
   }
 
-  warn(category: LogCategory, message: string, data?: any, context?: string) {
+  warn(category: LogCategory, message: string, data?: LogData, context?: string) {
     this.log(LogLevel.WARN, category, message, data, context);
   }
 
-  error(category: LogCategory, message: string, data?: any, context?: string) {
+  error(category: LogCategory, message: string, data?: LogData, context?: string) {
     this.log(LogLevel.ERROR, category, message, data, context);
   }
 
   // Specialized logging methods for common operations
-  apiRequest(endpoint: string, method: string, data?: any) {
+  apiRequest(endpoint: string, method: string, data?: LogData) {
     this.info(LogCategory.API, `${method} ${endpoint}`, data, 'Request');
   }
 
-  apiResponse(endpoint: string, status: number, data?: any) {
+  apiResponse(endpoint: string, status: number, data?: LogData) {
     const level = status >= 400 ? LogLevel.ERROR : LogLevel.INFO;
     this.log(level, LogCategory.API, `Response ${status} from ${endpoint}`, data, 'Response');
   }
@@ -210,11 +212,11 @@ class Logger {
     this.log(level, LogCategory.AUTOSAVE, `${operation}: ${itemCount} items`, { success }, 'AutoSave');
   }
 
-  databaseOperation(operation: string, table: string, data?: any) {
+  databaseOperation(operation: string, table: string, data?: LogData) {
     this.info(LogCategory.DATABASE, `${operation} on ${table}`, data, 'Database');
   }
 
-  onboardingStep(step: string, action: string, data?: any) {
+  onboardingStep(step: string, action: string, data?: LogData) {
     this.info(LogCategory.ONBOARDING, `Step: ${step}, Action: ${action}`, data, 'Onboarding');
   }
 
