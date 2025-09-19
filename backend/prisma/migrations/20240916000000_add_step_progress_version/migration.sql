@@ -1,0 +1,2 @@
+ALTER TABLE "OnboardingStepProgress"
+    ADD COLUMN IF NOT EXISTS "version" INTEGER NOT NULL DEFAULT 0;

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useImperativeHandle, forwardRef, useCallback, useMemo, useRef, useEffect } from 'react';
-import { useDebouncedCallback } from 'use-debounce';
+import { useResponsiveDebouncedCallback } from '@/hooks/useResponsiveDebouncedCallback';
 import { AlertCircle, User, Building, ChevronDown, Search } from 'lucide-react';
 import { StepHandle } from './types';
 import InternationalPhoneInput from './InternationalPhoneInputFixed';
@@ -123,6 +123,7 @@ const OwnerDetailsStep = React.memo(forwardRef<StepHandle, OwnerDetailsStepProps
   console.log('[OWNER] OwnerDetailsStep - Received data from parent:', data);
   
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isTyping, setIsTyping] = useState(false);
   const [countrySearchOpen, setCountrySearchOpen] = useState(false);
   const [nationalitySearchOpen, setNationalitySearchOpen] = useState(false);
   const [countrySearchQuery, setCountrySearchQuery] = useState('');
@@ -232,12 +233,13 @@ const OwnerDetailsStep = React.memo(forwardRef<StepHandle, OwnerDetailsStepProps
   }, [data, localFormData]);
 
   // Debounced update to parent component
-  const debouncedUpdate = useDebouncedCallback(
-    (newFormData: any) => {
+  const debouncedUpdate = useResponsiveDebouncedCallback(
+    (newFormData: Record<string, unknown>) => {
       console.log('[OWNER] OwnerDetailsStep - Debounced update to parent:', newFormData);
       onUpdate(newFormData);
     },
-    1000 // 1 second debounce
+    600,
+    (typing) => setIsTyping(typing)
   );
 
   const handleInputChange = useCallback((field: string, value: any) => {
@@ -257,18 +259,11 @@ const OwnerDetailsStep = React.memo(forwardRef<StepHandle, OwnerDetailsStepProps
     });
     
     // Immediate local state update for UI responsiveness
-    setLocalFormData((prev: any) => {
-      const updated = { ...prev, [field]: value };
-      console.log('[OWNER] OwnerDetailsStep - Updated local form data:', {
-        field,
-        previousValue: prev[field],
-        newValue: value,
-        totalLocalFields: Object.keys(updated).length,
-        nonEmptyLocalFields: Object.entries(updated).filter(([_, v]) => v && v !== '').length
-      });
-      return updated;
-    });
-    
+    setLocalFormData((prev: any) => ({
+      ...prev,
+      [field]: value,
+    }));
+
     // Debounced parent update
     debouncedUpdate(newFormData);
 
@@ -282,7 +277,9 @@ const OwnerDetailsStep = React.memo(forwardRef<StepHandle, OwnerDetailsStepProps
   }, [formData, errors, debouncedUpdate]);
 
   const handlePhoneChange = useCallback((fieldPrefix: string) => (phoneNumber: string, countryCode: string, dialCode: string) => {
-    let phoneField, countryField, dialField;
+    let phoneField: string;
+    let countryField: string;
+    let dialField: string;
     
     if (fieldPrefix === '') {
       // Primary phone

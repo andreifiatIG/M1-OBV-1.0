@@ -616,6 +616,7 @@ class SharePointService {
       validFrom?: Date;
       validUntil?: Date;
       replaceExisting?: boolean;
+      createRecord?: boolean;
     } = {}
   ): Promise<UploadResult> {
     try {
@@ -632,9 +633,21 @@ class SharePointService {
         };
       }
 
+      if (!this.isInitialized || !this.config) {
+        await this.initialize();
+      }
+
       if (!this.config) {
         throw new Error('SharePoint service not initialized');
       }
+
+      const {
+        description,
+        validFrom,
+        validUntil,
+        replaceExisting,
+        createRecord = true,
+      } = options;
 
       // Get villa information
       const villa = await prisma.villa.findUnique({
@@ -711,7 +724,7 @@ class SharePointService {
 
       // Sanitize filename
       const sanitizedFileName = this.sanitizeFileName(fileName);
-      const conflictBehavior = options.replaceExisting ? 'replace' : 'rename';
+      const conflictBehavior = replaceExisting ? 'replace' : 'rename';
 
       // Upload file to SharePoint
       const uploadResult = await microsoftGraphService.uploadFile(
@@ -722,27 +735,30 @@ class SharePointService {
         fileContent,
         {
           conflictBehavior,
-          description: options.description,
+          description,
         }
       );
 
-      // Create document record in database
-      const document = await prisma.document.create({
-        data: {
-          villaId,
-          documentType: documentType as any,
-          fileName: sanitizedFileName,
-          fileUrl: uploadResult.webUrl || uploadResult['@microsoft.graph.downloadUrl'],
-          fileSize: fileContent.length,
-          mimeType,
-          description: options.description,
-          validFrom: options.validFrom,
-          validUntil: options.validUntil,
-          sharePointFileId: uploadResult.id,
-          sharePointPath: `${fullPath}/${sanitizedFileName}`,
-          isActive: true,
-        },
-      });
+      let documentRecord: { id: string } | null = null;
+      if (createRecord) {
+        documentRecord = await prisma.document.create({
+          data: {
+            villaId,
+            documentType: documentType as any,
+            fileName: sanitizedFileName,
+            fileUrl: uploadResult.webUrl || uploadResult['@microsoft.graph.downloadUrl'],
+            fileSize: fileContent.length,
+            mimeType,
+            description,
+            validFrom,
+            validUntil,
+            sharePointFileId: uploadResult.id,
+            sharePointPath: `${fullPath}/${sanitizedFileName}`,
+            sharePointUrl: uploadResult.webUrl || uploadResult['@microsoft.graph.downloadUrl'],
+            isActive: true,
+          },
+        });
+      }
 
       const result: UploadResult = {
         fileId: uploadResult.id,
@@ -752,11 +768,12 @@ class SharePointService {
         size: fileContent.length,
         mimeType,
         sharepointUrl: uploadResult.webUrl,
+        id: documentRecord?.id,
       };
 
       logger.info(`[OK] Document uploaded to SharePoint: ${sanitizedFileName}`, {
         villaId,
-        documentId: document.id,
+        documentId: documentRecord?.id,
         sharePointFileId: uploadResult.id,
       });
 

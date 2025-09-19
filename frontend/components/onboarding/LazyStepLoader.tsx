@@ -1,6 +1,6 @@
 'use client';
 
-import React, { lazy, Suspense, useEffect, useState } from 'react';
+import React, { lazy, Suspense, useEffect, useState, ErrorInfo, Component, ReactNode } from 'react';
 import { Loader2 } from 'lucide-react';
 
 // Step components with lazy loading
@@ -29,16 +29,21 @@ const preloadSteps = (currentStep: number) => {
     const component = stepComponents[step as keyof typeof stepComponents];
     if (component && '_ctor' in component) {
       // Trigger lazy loading without rendering
-      (component as any)._ctor();
+      (component as { _ctor?: () => void })._ctor?.();
     }
   });
 };
 
+interface StepHandle {
+  validate: () => boolean;
+  getData: () => Record<string, unknown>;
+}
+
 interface LazyStepLoaderProps {
   stepNumber: number;
-  data: any;
-  onUpdate: (data: any) => void;
-  stepRef?: React.Ref<any>;
+  data: Record<string, unknown>;
+  onUpdate: (data: Record<string, unknown>) => void;
+  stepRef?: React.Ref<StepHandle>;
 }
 
 // Loading skeleton component
@@ -65,7 +70,7 @@ const StepErrorFallback = ({ error, retry }: { error: Error; retry: () => void }
   <div className="text-center py-8">
     <div className="text-red-500 mb-4">
       <svg className="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
           d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
       </svg>
     </div>
@@ -79,6 +84,39 @@ const StepErrorFallback = ({ error, retry }: { error: Error; retry: () => void }
     </button>
   </div>
 );
+
+// Error boundary component
+interface ErrorBoundaryProps {
+  children: ReactNode;
+  onError: (error: Error, errorInfo: ErrorInfo) => void;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+}
+
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(): ErrorBoundaryState {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    this.props.onError(error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return null; // Let parent handle the error display
+    }
+
+    return this.props.children;
+  }
+}
 
 export const LazyStepLoader: React.FC<LazyStepLoaderProps> = ({
   stepNumber,
@@ -116,14 +154,14 @@ export const LazyStepLoader: React.FC<LazyStepLoaderProps> = ({
   
   return (
     <Suspense fallback={<StepSkeleton />}>
-      <div
-        onError={(event: any) => {
+      <ErrorBoundary
+        onError={(error: Error, _errorInfo: ErrorInfo) => {
           setHasError(true);
-          setErrorMessage(event.error?.message || 'Failed to load step component');
+          setErrorMessage(error.message || 'Failed to load step component');
         }}
       >
         <StepComponent ref={stepRef} data={data} onUpdate={onUpdate} />
-      </div>
+      </ErrorBoundary>
     </Suspense>
   );
 };
@@ -136,7 +174,7 @@ export const usePrefetchSteps = (currentStep: number) => {
       if (currentStep < 10) {
         const nextStep = stepComponents[(currentStep + 1) as keyof typeof stepComponents];
         if (nextStep && '_ctor' in nextStep) {
-          (nextStep as any)._ctor();
+          (nextStep as { _ctor?: () => void })._ctor?.();
         }
       }
     }, 1000); // Wait 1 second before prefetching
@@ -150,8 +188,8 @@ export const isStepLoaded = (stepNumber: number): boolean => {
   const component = stepComponents[stepNumber as keyof typeof stepComponents];
   if (!component || !('_ctor' in component)) return false;
   
-  const ctor = (component as any)._ctor;
-  return ctor && ctor._result !== undefined;
+  const ctor = (component as { _ctor?: { _result?: unknown } })._ctor;
+  return Boolean(ctor && ctor._result !== undefined);
 };
 
 export default LazyStepLoader;

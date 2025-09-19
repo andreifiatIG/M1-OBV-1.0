@@ -208,7 +208,7 @@ export default function FacilitiesSection({ facilities, villaId }: FacilitiesSec
     });
     
     try {
-      const response = await clientApi.updateFacilities(villaId, facilitiesToUpdate);
+      const response = await clientApi.updateFacilities(villaId, { facilities: facilitiesToUpdate });
       if (response.success) {
         setIsEditing(false);
         window.location.reload();

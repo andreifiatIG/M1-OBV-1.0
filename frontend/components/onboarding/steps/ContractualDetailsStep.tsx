@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useImperativeHandle, forwardRef, useMemo, useCallback } from 'react';
-import { useDebouncedCallback } from 'use-debounce';
+import { useResponsiveDebouncedCallback } from '@/hooks/useResponsiveDebouncedCallback';
 import { FileText, Calendar, Shield, AlertCircle, CalendarDays, Clock } from 'lucide-react';
 import { StepHandle } from './types';
 
@@ -283,10 +283,13 @@ const ContractualDetailsStep = forwardRef<StepHandle, ContractualDetailsStepProp
   }, [data, localFormData]);
 
   // Debounced update to parent component
-  const debouncedUpdate = useDebouncedCallback((newData: any) => {
-    console.log('🏢 ContractualDetailsStep - Debounced update to parent:', newData);
-    onUpdate(newData);
-  }, 1000);
+  const debouncedUpdate = useResponsiveDebouncedCallback(
+    (newData: Record<string, unknown>) => {
+      console.log('🏢 ContractualDetailsStep - Debounced update to parent:', newData);
+      onUpdate(newData);
+    },
+    600
+  );
 
   const handleInputChange = useCallback((field: string, value: string | number | boolean) => {
     console.log(`🏢 ContractualDetailsStep - Input change: ${field} = "${value}" (type: ${typeof value})`);

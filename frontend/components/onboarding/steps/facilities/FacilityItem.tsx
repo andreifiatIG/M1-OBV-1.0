@@ -91,13 +91,15 @@ export default function FacilityItem({
             body: sharePointFormData,
           });
           
-          if (sharePointResp.success && sharePointResp.data?.length > 0) {
+          const sharePointData = Array.isArray(sharePointResp.data) ? sharePointResp.data : [];
+
+          if (sharePointResp.success && sharePointData.length > 0) {
             console.log('📷 Photo uploaded to enhanced media service with thumbnails');
             // Update item with enhanced photo URLs
             onUpdate({ 
-              photoUrl: sharePointResp.data[0].fileUrl, // Use enhanced public URL
-              sharePointUrl: sharePointResp.data[0].sharePointUrl, // Store SharePoint backup URL
-              thumbnailUrl: sharePointResp.data[0].thumbnailUrl // Store thumbnail URL for fast loading
+              photoUrl: sharePointData[0].fileUrl, // Use enhanced public URL
+              sharePointUrl: sharePointData[0].sharePointUrl, // Store SharePoint backup URL
+              thumbnailUrl: sharePointData[0].thumbnailUrl // Store thumbnail URL for fast loading
             });
           }
         } catch (error) {

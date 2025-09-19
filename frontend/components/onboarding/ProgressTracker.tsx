@@ -15,7 +15,16 @@ interface ProgressTrackerProps {
   completedSteps: number[];
   onStepClick: (stepNumber: number) => void;
   onboardingData?: any;
-  validationSummary?: Record<number, { errors: number; warnings: number }>;
+  validationSummary?: StepValidationSummary;
+}
+
+export interface StepValidationSummary {
+  [stepId: number]: {
+    errors: number;
+    warnings: number;
+    missingFields: string[];
+    status: "complete" | "warning" | "pending";
+  };
 }
 
 export default function ProgressTracker({
@@ -26,6 +35,20 @@ export default function ProgressTracker({
   onboardingData,
   validationSummary,
 }: ProgressTrackerProps) {
+  const getStepStatus = (stepId: number) => {
+    const summary = validationSummary?.[stepId];
+    if (!summary) {
+      const isCompleted = completedSteps.includes(stepId);
+      return {
+        status: isCompleted ? "complete" : "pending",
+        errors: 0,
+        warnings: 0,
+        missingFields: [] as string[],
+      };
+    }
+    return summary;
+  };
+
   return (
     <nav className="w-full" role="navigation" aria-label="Onboarding progress">
       {/* Mobile Progress Bar */}
@@ -52,16 +75,10 @@ export default function ProgressTracker({
           <div className="bg-transparent px-8 py-6">
             <ol className="flex items-start justify-center" role="list">
               {steps.map((step, index) => {
-                const validation = validationSummary?.[step.id];
-                const hasErrors = (validation?.errors || 0) > 0;
-                const hasWarnings = !hasErrors && (validation?.warnings || 0) > 0;
-                const stepHasData = onboardingData && (() => {
-                  const stepConfig = steps.find(s => s.id === step.id);
-                  if (!stepConfig) return false;
-                  return completedSteps.includes(step.id);
-                })();
-                
-                const isCompleted = completedSteps.includes(step.id) || stepHasData;
+                const summary = getStepStatus(step.id);
+                const hasErrors = summary.errors > 0;
+                const hasWarnings = summary.warnings > 0 && summary.errors === 0;
+                const isCompleted = summary.status === "complete";
                 const isCurrent = currentStep === step.id;
                 const isClickable = isCompleted || isCurrent || completedSteps.includes(step.id - 1);
                 const isLastStep = step.id === steps.length;
@@ -109,9 +126,11 @@ export default function ProgressTracker({
                           </span>
                         )}
                         </button>
-                        {validation && (validation.errors > 0 || validation.warnings > 0) && (
-                          <span className={`mt-1 text-[10px] font-semibold ${validation.errors > 0 ? 'text-red-600' : 'text-amber-600'}`}>
-                            {validation.errors > 0 ? `${validation.errors} error${validation.errors > 1 ? 's' : ''}` : `${validation.warnings} warning${validation.warnings > 1 ? 's' : ''}`}
+                        {summary && (summary.errors > 0 || summary.warnings > 0) && (
+                          <span className={`mt-1 text-[10px] font-semibold ${summary.errors > 0 ? 'text-red-600' : 'text-amber-600'}`}>
+                            {summary.errors > 0
+                              ? `${summary.errors} item${summary.errors > 1 ? 's' : ''} missing`
+                              : `${summary.warnings} recommended`}
                           </span>
                         )}
                       
@@ -134,10 +153,10 @@ export default function ProgressTracker({
                         >
                           {step.title}
                         </span>
-                      </div>
-                    </div>
+                     </div>
+                   </div>
 
-                    {/* Connector Line */}
+                   {/* Connector Line */}
                     {index < steps.length - 1 && (
                       <div className="flex items-center" style={{ marginTop: '20px', width: '16px' }}>
                         <div
@@ -152,11 +171,42 @@ export default function ProgressTracker({
                       </div>
                     )}
                   </li>
+               );
+             })}
+           </ol>
+         </div>
+       </div>
+        {validationSummary && Object.keys(validationSummary).length > 0 && (
+          <div className="mt-4 space-y-2">
+            {steps
+              .filter((step) => {
+                const summary = validationSummary[step.id];
+                return summary && (summary.errors > 0 || summary.warnings > 0);
+              })
+              .map((step) => {
+                const summary = validationSummary[step.id]!;
+                return (
+                  <div
+                    key={`summary-${step.id}`}
+                    className={`rounded-lg border px-4 py-3 text-sm bg-white/80 backdrop-blur ${summary.errors > 0 ? 'border-red-200 text-red-700 bg-red-50/70' : 'border-amber-200 text-amber-700 bg-amber-50/70'}`}
+                  >
+                    <div className="font-semibold mb-1">
+                      {step.title}: {summary.errors > 0
+                        ? `${summary.errors} required field${summary.errors > 1 ? 's are' : ' is'} missing`
+                        : `${summary.warnings} recommended item${summary.warnings > 1 ? 's are' : ' is'} missing`}
+                    </div>
+                    {summary.missingFields.length > 0 && (
+                      <ul className="list-disc list-inside space-y-0.5">
+                        {summary.missingFields.map((field) => (
+                          <li key={`${step.id}-${field}`}>{field}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
                 );
               })}
-            </ol>
           </div>
-        </div>
+        )}
       </div>
     </nav>
   );

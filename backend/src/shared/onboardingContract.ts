@@ -199,6 +199,9 @@ const optionalDateString = () =>
       const next = emptyToUndefined(value);
       if (next === undefined) return undefined;
       if (next instanceof Date) return next.toISOString();
+      if (typeof next === 'number' && Number.isFinite(next)) {
+        return new Date(next).toISOString();
+      }
       if (typeof next === 'string') {
         const trimmed = next.trim();
         if (!trimmed) return undefined;
@@ -733,7 +736,11 @@ export const STEP_FIELD_ALIASES: Record<OnboardingStep, Record<string, FieldAlia
   },
 };
 
-export const REQUIRED_FIELDS_BY_STEP: Partial<Record<OnboardingStep, (keyof StepDTOMap[OnboardingStep])[]>> = {
+type RequiredFieldsMap = {
+  [Step in OnboardingStep]?: (keyof StepDTOMap[Step])[];
+};
+
+export const REQUIRED_FIELDS_BY_STEP: RequiredFieldsMap = {
   1: ['villaName', 'address', 'city', 'country', 'bedrooms', 'bathrooms', 'maxGuests', 'propertyType'],
   2: ['firstName', 'lastName', 'email', 'phone', 'address', 'city', 'country'],
   3: ['contractStartDate', 'contractType', 'commissionRate'],

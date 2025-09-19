@@ -311,6 +311,7 @@ router.post(
                   description: parsedBody.description,
                   validFrom: parsedBody.validFrom ? new Date(parsedBody.validFrom) : undefined,
                   validUntil: parsedBody.validUntil ? new Date(parsedBody.validUntil) : undefined,
+                  createRecord: false,
                 }
               );
             fileUrl = sharePointResult.fileUrl;
@@ -342,6 +343,7 @@ router.post(
             validFrom: parsedBody.validFrom ? new Date(parsedBody.validFrom) : null,
             validUntil: parsedBody.validUntil ? new Date(parsedBody.validUntil) : null,
             sharePointFileId: sharePointResult?.fileId || null,
+            sharePointUrl: sharePointResult?.fileUrl || null,
             sharePointPath: sharePointResult?.filePath || null,
           },
           include: {

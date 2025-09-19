@@ -17,6 +17,7 @@ import {
 } from '../../shared/onboardingContract';
 
 const router = Router();
+const SANITIZER_DEBUG_ENABLED = process.env.ENABLE_SANITIZER_DEBUG === 'true';
 
 // Sanitization middleware configurations
 const onboardingStepSanitization = createSanitizationMiddleware({
@@ -305,7 +306,9 @@ const onboardingStepSanitization = createSanitizationMiddleware({
       
       // Enhanced facilities sanitization with validation and logging
       if (data.facilities && Array.isArray(data.facilities)) {
-        console.log(`[SANITIZER] Processing ${data.facilities.length} facilities`);
+        if (SANITIZER_DEBUG_ENABLED) {
+          console.log(`[SANITIZER] Processing ${data.facilities.length} facilities`);
+        }
         
         const validCategories = [
           'property_layout_spaces', 'occupancy_sleeping', 'bathrooms', 'kitchen_dining',
@@ -321,15 +324,17 @@ const onboardingStepSanitization = createSanitizationMiddleware({
           .map((item: any, index: number) => {
             // Enhanced validation with detailed logging
             if (!item.category || !item.itemName) {
-              console.warn(`[SANITIZER] Skipping facility ${index + 1}: missing category or itemName`, {
-                category: item.category,
-                itemName: item.itemName
-              });
+              if (SANITIZER_DEBUG_ENABLED) {
+                console.warn(`[SANITIZER] Skipping facility ${index + 1}: missing category or itemName`, {
+                  category: item.category,
+                  itemName: item.itemName
+                });
+              }
               return null;
             }
             
             // Validate category
-            if (!validCategories.includes(item.category)) {
+            if (!validCategories.includes(item.category) && SANITIZER_DEBUG_ENABLED) {
               console.warn(`[SANITIZER] Invalid category "${item.category}" for facility "${item.itemName}"`);
             }
             
@@ -357,12 +362,16 @@ const onboardingStepSanitization = createSanitizationMiddleware({
               lastCheckedAt: item.lastCheckedAt ? sanitizers.text(item.lastCheckedAt) : null,
             };
             
-            console.debug(`[SANITIZER] Sanitized facility: ${sanitizedItem.category}/${sanitizedItem.itemName} (available: ${sanitizedItem.isAvailable})`);
+            if (SANITIZER_DEBUG_ENABLED) {
+              console.debug(`[SANITIZER] Sanitized facility: ${sanitizedItem.category}/${sanitizedItem.itemName} (available: ${sanitizedItem.isAvailable})`);
+            }
             return sanitizedItem;
           })
           .filter(Boolean); // Remove invalid facilities
           
-        console.log(`[SANITIZER] Facilities sanitization completed: ${sanitized.facilities.length} valid facilities`);
+        if (SANITIZER_DEBUG_ENABLED) {
+          console.log(`[SANITIZER] Facilities sanitization completed: ${sanitized.facilities.length} valid facilities`);
+        }
       }
       
       // =================================================================
@@ -524,20 +533,32 @@ router.get('/:villaId',
     
     const progress = await onboardingService.getOnboardingProgress(villaId, userId);
     
-    logger.debug('[VILLA] API Response - Villa data being sent to frontend:', {
+    logger.debug('[VILLA] API Response - Villa data summary:', {
       villaId: progress.villa?.id,
       villaFields: Object.keys(progress.villa || {}),
-      villaData: progress.villa
-    });
-    
-    // 🔍 STAFF DEBUG: Log staff data specifically
-    logger.info('🔍 [STAFF-DEBUG] Staff data in API response:', {
-      villaId: progress.villa?.id,
-      hasVilla: !!progress.villa,
-      hasStaff: !!progress.villa?.staff,
       staffCount: progress.villa?.staff?.length || 0,
-      staffData: progress.villa?.staff || []
+      documentCount: progress.villa?.documents?.length || 0,
+      photoCount: progress.villa?.photos?.length || 0,
     });
+
+    // 🔍 STAFF DEBUG: Log staff data specifically (without full payload)
+    if (progress.villa?.staff?.length) {
+      logger.info('🔍 [STAFF-DEBUG] Staff data in API response:', {
+        villaId: progress.villa?.id,
+        hasVilla: true,
+        staffCount: progress.villa.staff.length,
+        staffSample: progress.villa.staff.slice(0, 3).map((s: any) => ({
+          id: s.id,
+          firstName: s.firstName,
+          lastName: s.lastName,
+          position: s.position,
+        })),
+      });
+    } else {
+      logger.info('🔍 [STAFF-DEBUG] No active staff linked to villa.', {
+        villaId: progress.villa?.id,
+      });
+    }
     
     res.json({
       success: true,
@@ -553,6 +574,33 @@ router.get('/:villaId',
     });
   }
 });
+
+// Lightweight onboarding progress summary (optimized for dashboard)
+router.get('/:villaId/summary',
+  onboardingReadRateLimit,
+  authenticate,
+  cacheMiddleware(CacheDuration.SHORT),
+  async (req: Request, res: Response) => {
+    try {
+      const { villaId } = req.params;
+      const userId = req.user?.id;
+
+      const summary = await onboardingService.getOnboardingProgressSummary(villaId, userId);
+
+      res.json({
+        success: true,
+        data: summary,
+      });
+    } catch (error) {
+      console.error('Error getting onboarding summary:', error);
+      const message = error instanceof Error ? error.message : 'Failed to get onboarding summary';
+      const status = typeof message === 'string' && message.toLowerCase().includes('not found') ? 404 : 500;
+      res.status(status).json({
+        success: false,
+        message,
+      });
+    }
+  });
 
 // Update onboarding step (with cache invalidation and smart rate limiting)
 router.put('/:villaId/step', 

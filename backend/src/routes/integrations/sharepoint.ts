@@ -1,11 +1,10 @@
 import { Router, Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import mockSharePointService from '../../services/utilities/mockSharePointService';
 import { simpleClerkAuth } from '../../middleware/simpleClerkAuth';
 import { logger } from '../../utils/logger';
+import prisma from '../../utils/prisma';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // Apply authentication middleware
 router.use(simpleClerkAuth);

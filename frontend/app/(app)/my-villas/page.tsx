@@ -145,9 +145,10 @@ export default function MyVillasPage() {
         localStorage.removeItem(`onboarding_step_${user.id}`);
         localStorage.removeItem(`onboarding_data_${user.id}`);
       }
+      localStorage.removeItem('currentVillaId');
       
       // Navigate to onboarding wizard - it will create the villa automatically
-      router.push('/onboarding');
+      router.push('/onboarding?new=true');
       toast.success('Starting fresh onboarding session...');
     } catch (error) {
       console.error('Error starting onboarding session:', error);
@@ -162,6 +163,7 @@ export default function MyVillasPage() {
         localStorage.setItem(`onboarding_villa_${user.id}`, villaId);
         localStorage.setItem(`onboarding_step_${user.id}`, currentStep.toString());
       }
+      localStorage.setItem('currentVillaId', villaId);
       
       // Navigate to onboarding wizard
       router.push('/onboarding');

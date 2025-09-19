@@ -1,4 +1,4 @@
-import { PrismaClient, OnboardingStatus, VillaStatus, StepStatus, FieldStatus } from '@prisma/client';
+import { OnboardingStatus, VillaStatus, StepStatus, FieldStatus } from '@prisma/client';
 import { logger, metricsLog } from '../../utils/logger';
 import {
   ONBOARDING_STEPS,
@@ -6,7 +6,7 @@ import {
   type OnboardingStep,
 } from '../../shared/onboardingContract';
 
-const prisma = new PrismaClient();
+import prisma from '../../utils/prisma';
 export const prismaClient = prisma;
 
 export interface OnboardingStepData {
@@ -468,7 +468,7 @@ class OnboardingService {
         totalSteps: this.TOTAL_STEPS,
         completedSteps: completedStepsArray,
         currentStep: progress.currentStep,
-        stepBreakdown: dataBasedCompletion.stepCompletionDetails
+        stepBreakdownKeys: Object.keys(dataBasedCompletion.stepCompletionDetails),
       });
 
       // Get validation for current step
@@ -507,17 +507,18 @@ class OnboardingService {
 
       // Add fieldProgress to villa data for compatibility with data mapper
       const step9FieldProgress = fieldProgress[9] || {};
-      logger.info(`[BEDROOM] Backend: Step 9 field progress for villa ${villaId}:`, step9FieldProgress);
-      logger.info(`[BEDROOM] Backend: Full field progress structure:`, fieldProgress);
-      
-      // Special handling: if we have bedroom data in field progress, also add it directly to the villa
+      logger.debug(`[BEDROOM] Backend: Step 9 field progress keys for villa ${villaId}:`, Object.keys(step9FieldProgress));
+      logger.debug(`[BEDROOM] Backend: Field progress summary for villa ${villaId}:`, {
+        stepsWithFields: Object.keys(fieldProgress).length,
+        stepNumbers: Object.keys(fieldProgress),
+      });
+
       if (step9FieldProgress.bedrooms || step9FieldProgress.bedrooms_config) {
-        const bedroomData = step9FieldProgress.bedrooms || step9FieldProgress.bedrooms_config;
-        logger.info(`[BEDROOM] Backend: Found bedroom data in field progress, adding to villa:`, bedroomData);
+        logger.debug(`[BEDROOM] Backend: Found bedroom data in field progress for villa ${villaId}`);
       } else {
         logger.warn(`[BEDROOM] Backend: No bedroom data found in step 9 field progress for villa ${villaId}`);
       }
-      
+
       const stepVersions = (progress.villa?.stepProgress || []).reduce((acc, step) => {
         acc[step.stepNumber] = step.version ?? 0;
         return acc;
@@ -548,22 +549,112 @@ class OnboardingService {
       };
 
       // 🔍 STAFF DEBUG: Final result being returned
-      logger.info('🔍 [STAFF-DEBUG] Final getOnboardingProgress result:', {
+      logger.debug('🔍 [STAFF-DEBUG] Final getOnboardingProgress summary:', {
         villaId,
         hasVilla: !!finalResult.villa,
-        hasStaffInVilla: !!finalResult.villa?.staff,
-        staffCountInFinalResult: finalResult.villa?.staff?.length || 0,
-        finalStaffData: finalResult.villa?.staff?.map((s: any) => ({ 
-          id: s.id, 
-          firstName: s.firstName, 
-          lastName: s.lastName, 
-          position: s.position 
-        })) || []
+        staffCount: finalResult.villa?.staff?.length || 0,
+        completedSteps: finalResult.completedSteps,
+        completionPercentage: finalResult.completionPercentage,
       });
 
       return finalResult;
     } catch (error) {
       logger.error('Error getting onboarding progress:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Lightweight onboarding progress summary for dashboard views
+   */
+  async getOnboardingProgressSummary(villaId: string, userId?: string) {
+    try {
+      // Ensure villa exists before attempting to read/create progress
+      const villaExists = await prisma.villa.findUnique({
+        where: { id: villaId },
+        select: { id: true },
+      });
+
+      if (!villaExists) {
+        throw new Error(`Villa with ID ${villaId} not found. Please create the villa first.`);
+      }
+
+      const progressSelect = {
+        villaId: true,
+        currentStep: true,
+        totalSteps: true,
+        status: true,
+        updatedAt: true,
+        createdAt: true,
+        villaInfoCompleted: true,
+        ownerDetailsCompleted: true,
+        contractualDetailsCompleted: true,
+        bankDetailsCompleted: true,
+        otaCredentialsCompleted: true,
+        staffConfigCompleted: true,
+        facilitiesCompleted: true,
+        photosUploaded: true,
+        documentsUploaded: true,
+        reviewCompleted: true,
+      } as const;
+
+      let progress = await prisma.onboardingProgress.findUnique({
+        where: { villaId },
+        select: progressSelect,
+      });
+
+      if (!progress) {
+        progress = await prisma.onboardingProgress.create({
+          data: {
+            villaId,
+            currentStep: 1,
+            totalSteps: this.TOTAL_STEPS,
+            status: OnboardingStatus.IN_PROGRESS,
+          },
+          select: progressSelect,
+        });
+
+        if (userId) {
+          await this.initializeEnhancedProgress(villaId, userId);
+        }
+      }
+
+      const totalSteps = progress.totalSteps || this.TOTAL_STEPS;
+
+      const stepFlags: Array<{ step: number; completed: boolean }> = [
+        { step: 1, completed: progress.villaInfoCompleted },
+        { step: 2, completed: progress.ownerDetailsCompleted },
+        { step: 3, completed: progress.contractualDetailsCompleted },
+        { step: 4, completed: progress.bankDetailsCompleted },
+        { step: 5, completed: progress.otaCredentialsCompleted },
+        { step: 6, completed: progress.documentsUploaded },
+        { step: 7, completed: progress.staffConfigCompleted },
+        { step: 8, completed: progress.facilitiesCompleted },
+        { step: 9, completed: progress.photosUploaded },
+        { step: 10, completed: progress.reviewCompleted },
+      ];
+
+      const completedSteps = stepFlags
+        .filter(({ completed }) => completed)
+        .map(({ step }) => step);
+
+      const completionPercentage = totalSteps === 0
+        ? 0
+        : Math.round((completedSteps.length / totalSteps) * 100);
+
+      return {
+        villaId,
+        currentStep: progress.currentStep,
+        totalSteps,
+        completedSteps,
+        completedStepsCount: completedSteps.length,
+        completionPercentage,
+        status: progress.status,
+        lastUpdatedAt: progress.updatedAt.toISOString(),
+        createdAt: progress.createdAt.toISOString(),
+      };
+    } catch (error) {
+      logger.error('Error getting onboarding progress summary:', error);
       throw error;
     }
   }
@@ -630,7 +721,9 @@ class OnboardingService {
 
       const isSkipped = data?.skipped === true;
       logger.info(`[STEP_UPDATE] Villa ${villaId}, Step ${step}, Completed: ${completed}, Skipped: ${isSkipped}`);
-      logger.info(`[STEP_UPDATE] Raw data received:`, JSON.stringify(data, null, 2));
+      logger.debug(`[STEP_UPDATE] Data keys for villa ${villaId}, step ${step}:`, {
+        keys: data ? Object.keys(data) : [],
+      });
 
       let normalizedData = data;
       if (!isSkipped) {
@@ -905,16 +998,27 @@ class OnboardingService {
 
       const currentStep = Math.max(1, stepsCompleted + stepsSkipped + 1);
 
-      await prisma.onboardingSession.update({
+      await prisma.onboardingSession.upsert({
         where: { villaId },
-        data: {
+        update: {
           currentStep,
           stepsCompleted,
           stepsSkipped,
           fieldsCompleted,
           fieldsSkipped,
-          lastActivityAt: new Date()
-        }
+          lastActivityAt: new Date(),
+        },
+        create: {
+          villaId,
+          userId: 'system',
+          currentStep,
+          totalSteps: this.TOTAL_STEPS,
+          stepsCompleted,
+          stepsSkipped,
+          fieldsCompleted,
+          fieldsSkipped,
+          lastActivityAt: new Date(),
+        },
       });
     } catch (error) {
       logger.error('Error updating session counters:', error);
@@ -1029,8 +1133,11 @@ class OnboardingService {
             updateData.renovationYear = parseInt(data.renovationYear);
           }
           if (data.propertyType) updateData.propertyType = data.propertyType;
-          if (data.villaStyle || data.locationType) {
-            updateData.villaStyle = data.villaStyle || data.locationType;
+          if (data.villaStyle) {
+            updateData.villaStyle = data.villaStyle;
+          }
+          if (data.locationType) {
+            updateData.locationType = data.locationType;
           }
           
           // Descriptions - only update if provided
@@ -1056,14 +1163,8 @@ class OnboardingService {
 
         case 2: // Owner Details
           logger.info(`Saving owner details for villa ${villaId}`, {
-            dataKeys: Object.keys(data),
-            firstName: data.firstName,
-            lastName: data.lastName,
-            ownerFullName: data.ownerFullName,
-            email: data.email,
-            ownerEmail: data.ownerEmail,
-            phone: data.phone,
-            ownerType: data.ownerType
+            dataKeys: Object.keys(data || {}),
+            ownerType: data.ownerType,
           });
           
           // Handle name splitting from ownerFullName if firstName/lastName not provided
@@ -1079,116 +1180,124 @@ class OnboardingService {
           // Handle email field mapping
           const email = data.email || data.ownerEmail;
           const phone = data.phone || data.ownerPhone;
-          
-          // Validate required fields before saving (check DB schema for required fields)
-          const requiredFields = {
-            firstName,
-            lastName,
-            email,
-            phone,
-            address: data.address,
-            city: data.city,
-            country: data.country
-          };
-          
-          const missingFields = Object.entries(requiredFields)
-            .filter(([key, value]) => !value)
-            .map(([key]) => key);
-          
-          if (missingFields.length > 0) {
-            logger.warn(`Missing required owner fields for villa ${villaId}:`, {
-              missingFields,
-              providedData: {
-                firstName,
-                lastName,
-                email,
-                phone,
-                address: data.address,
-                city: data.city,
-                country: data.country
-              }
-            });
-            // Don't throw error, just log warning and skip saving
-            logger.warn(`Skipping owner save for villa ${villaId} due to missing required fields: ${missingFields.join(', ')}`);
-            return;
-          }
-          
-          logger.info(`Attempting to upsert owner for villa ${villaId} with:`, {
-            firstName,
-            lastName,
-            email,
-            phone,
-            address: data.address
+
+          const existingOwner = await prisma.owner.findUnique({
+            where: { villaId },
           });
-          
+
+          const coalesce = <T>(value: T | null | undefined, fallback: T): T =>
+            value !== undefined && value !== null ? value : fallback;
+
+          const ownerPayload = {
+            firstName: coalesce(firstName, existingOwner?.firstName ?? ""),
+            lastName: coalesce(lastName, existingOwner?.lastName ?? ""),
+            email: coalesce(email, existingOwner?.email ?? ""),
+            phone: coalesce(phone, existingOwner?.phone ?? ""),
+            alternativePhone: coalesce(
+              data.alternativePhone,
+              existingOwner?.alternativePhone ?? null
+            ),
+            nationality: coalesce(
+              data.nationality,
+              existingOwner?.nationality ?? null
+            ),
+            passportNumber: coalesce(
+              data.passportNumber,
+              existingOwner?.passportNumber ?? null
+            ),
+            idNumber: coalesce(data.idNumber, existingOwner?.idNumber ?? null),
+            address: coalesce(data.address, existingOwner?.address ?? ""),
+            city: coalesce(data.city, existingOwner?.city ?? ""),
+            country: coalesce(data.country, existingOwner?.country ?? ""),
+            zipCode: coalesce(data.zipCode, existingOwner?.zipCode ?? null),
+            preferredLanguage: coalesce(
+              data.preferredLanguage,
+              existingOwner?.preferredLanguage ?? "en"
+            ),
+            communicationPreference: coalesce(
+              data.communicationPreference,
+              existingOwner?.communicationPreference ?? "EMAIL"
+            ),
+            notes: coalesce(data.notes, existingOwner?.notes ?? null),
+            alternativePhoneCountryCode: coalesce(
+              data.alternativePhoneCountryCode,
+              existingOwner?.alternativePhoneCountryCode ?? null
+            ),
+            alternativePhoneDialCode: coalesce(
+              data.alternativePhoneDialCode,
+              existingOwner?.alternativePhoneDialCode ?? null
+            ),
+            phoneCountryCode: coalesce(
+              data.phoneCountryCode,
+              existingOwner?.phoneCountryCode ?? null
+            ),
+            phoneDialCode: coalesce(
+              data.phoneDialCode,
+              existingOwner?.phoneDialCode ?? null
+            ),
+            companyAddress: coalesce(
+              data.companyAddress,
+              existingOwner?.companyAddress ?? null
+            ),
+            companyName: coalesce(
+              data.companyName,
+              existingOwner?.companyName ?? null
+            ),
+            companyTaxId: coalesce(
+              data.companyTaxId,
+              existingOwner?.companyTaxId ?? null
+            ),
+            companyVat: coalesce(
+              data.companyVat,
+              existingOwner?.companyVat ?? null
+            ),
+            managerEmail: coalesce(
+              data.managerEmail,
+              existingOwner?.managerEmail ?? null
+            ),
+            managerName: coalesce(
+              data.managerName,
+              existingOwner?.managerName ?? null
+            ),
+            managerPhone: coalesce(
+              data.managerPhone,
+              existingOwner?.managerPhone ?? null
+            ),
+            managerPhoneCountryCode: coalesce(
+              data.managerPhoneCountryCode,
+              existingOwner?.managerPhoneCountryCode ?? null
+            ),
+            managerPhoneDialCode: coalesce(
+              data.managerPhoneDialCode,
+              existingOwner?.managerPhoneDialCode ?? null
+            ),
+            ownerType: coalesce(
+              data.ownerType,
+              existingOwner?.ownerType ?? "INDIVIDUAL"
+            ),
+            propertyEmail: coalesce(
+              data.propertyEmail,
+              existingOwner?.propertyEmail ?? null
+            ),
+            propertyWebsite: coalesce(
+              data.propertyWebsite,
+              existingOwner?.propertyWebsite ?? null
+            ),
+          };
+
+          logger.info(`Attempting to upsert owner for villa ${villaId} with:`, {
+            firstName: ownerPayload.firstName,
+            lastName: ownerPayload.lastName,
+            email: ownerPayload.email,
+            phone: ownerPayload.phone,
+          });
+
           await prisma.owner.upsert({
             where: { villaId },
-            update: {
-              firstName: firstName,
-              lastName: lastName,
-              email: email,
-              phone: phone,
-              alternativePhone: data.alternativePhone,
-              nationality: data.nationality,
-              passportNumber: data.passportNumber,
-              idNumber: data.idNumber,
-              address: data.address,
-              city: data.city,
-              country: data.country,
-              zipCode: data.zipCode,
-              preferredLanguage: data.preferredLanguage || 'en',
-              communicationPreference: data.communicationPreference || 'EMAIL',
-              notes: data.notes,
-              alternativePhoneCountryCode: data.alternativePhoneCountryCode,
-              alternativePhoneDialCode: data.alternativePhoneDialCode,
-              phoneCountryCode: data.phoneCountryCode,
-              phoneDialCode: data.phoneDialCode,
-              companyAddress: data.companyAddress,
-              companyName: data.companyName,
-              companyTaxId: data.companyTaxId,
-              companyVat: data.companyVat,
-              managerEmail: data.managerEmail,
-              managerName: data.managerName,
-              managerPhone: data.managerPhone,
-              managerPhoneCountryCode: data.managerPhoneCountryCode,
-              managerPhoneDialCode: data.managerPhoneDialCode,
-              ownerType: data.ownerType || 'INDIVIDUAL',
-              propertyEmail: data.propertyEmail,
-              propertyWebsite: data.propertyWebsite,
-            },
+            update: ownerPayload,
             create: {
               villaId,
-              firstName: firstName,
-              lastName: lastName,
-              email: email,
-              phone: phone,
-              alternativePhone: data.alternativePhone,
-              nationality: data.nationality,
-              passportNumber: data.passportNumber,
-              idNumber: data.idNumber,
-              address: data.address,
-              city: data.city,
-              country: data.country,
-              zipCode: data.zipCode,
-              preferredLanguage: data.preferredLanguage || 'en',
-              communicationPreference: data.communicationPreference || 'EMAIL',
-              notes: data.notes,
-              alternativePhoneCountryCode: data.alternativePhoneCountryCode,
-              alternativePhoneDialCode: data.alternativePhoneDialCode,
-              phoneCountryCode: data.phoneCountryCode,
-              phoneDialCode: data.phoneDialCode,
-              companyAddress: data.companyAddress,
-              companyName: data.companyName,
-              companyTaxId: data.companyTaxId,
-              companyVat: data.companyVat,
-              managerEmail: data.managerEmail,
-              managerName: data.managerName,
-              managerPhone: data.managerPhone,
-              managerPhoneCountryCode: data.managerPhoneCountryCode,
-              managerPhoneDialCode: data.managerPhoneDialCode,
-              ownerType: data.ownerType || 'INDIVIDUAL',
-              propertyEmail: data.propertyEmail,
-              propertyWebsite: data.propertyWebsite,
+              ...ownerPayload,
             },
           });
           
@@ -1263,50 +1372,72 @@ class OnboardingService {
             bankName: data.bankName
           });
           
-          // Check if required fields are present
-          if (!data.accountHolderName || !data.bankName || !data.accountNumber) {
-            logger.warn(`Skipping bank details save for villa ${villaId}: missing required fields`, {
-              hasAccountHolder: !!data.accountHolderName,
-              hasBankName: !!data.bankName,
-              hasAccountNumber: !!data.accountNumber
-            });
-            break;
-          }
-          
+          const existingBankDetails = await prisma.bankDetails.findUnique({
+            where: { villaId },
+          });
+
+          const coalesceBank = <T>(value: T | null | undefined, fallback: T): T =>
+            value !== undefined && value !== null ? value : fallback;
+
+          const bankPayload = {
+            accountHolderName: coalesceBank(
+              data.accountHolderName,
+              existingBankDetails?.accountHolderName ?? ""
+            ),
+            bankName: coalesceBank(
+              data.bankName,
+              existingBankDetails?.bankName ?? ""
+            ),
+            accountNumber: coalesceBank(
+              data.accountNumber,
+              existingBankDetails?.accountNumber ?? ""
+            ),
+            iban: coalesceBank(data.iban, existingBankDetails?.iban ?? null),
+            swiftCode: coalesceBank(
+              data.swiftCode,
+              existingBankDetails?.swiftCode ?? null
+            ),
+            branchName: coalesceBank(
+              data.branchName,
+              existingBankDetails?.branchName ?? null
+            ),
+            branchCode: coalesceBank(
+              data.branchCode,
+              existingBankDetails?.branchCode ?? null
+            ),
+            branchAddress: coalesceBank(
+              data.branchAddress ?? data.bankAddress,
+              existingBankDetails?.branchAddress ?? existingBankDetails?.bankAddress ?? null
+            ),
+            bankAddress: coalesceBank(
+              data.bankAddress,
+              existingBankDetails?.bankAddress ?? null
+            ),
+            bankCountry: coalesceBank(
+              data.bankCountry,
+              existingBankDetails?.bankCountry ?? null
+            ),
+            currency: coalesceBank(
+              data.currency,
+              existingBankDetails?.currency ?? "USD"
+            ),
+            accountType: coalesceBank(
+              data.accountType,
+              existingBankDetails?.accountType ?? "CHECKING"
+            ),
+            notes: coalesceBank(data.notes, existingBankDetails?.notes ?? null),
+            isVerified: coalesceBank(
+              data.isVerified,
+              existingBankDetails?.isVerified ?? false
+            ),
+          };
+
           await prisma.bankDetails.upsert({
             where: { villaId },
-            update: {
-              accountHolderName: data.accountHolderName,
-              bankName: data.bankName,
-              accountNumber: data.accountNumber,
-              iban: data.iban,
-              swiftCode: data.swiftCode,
-              branchName: data.branchName,
-              branchCode: data.branchCode,
-              branchAddress: data.branchAddress || data.bankAddress,
-              bankAddress: data.bankAddress,
-              bankCountry: data.bankCountry,
-              currency: data.currency || 'USD',
-              accountType: data.accountType,
-              notes: data.notes,
-              isVerified: data.isVerified || false,
-            },
+            update: bankPayload,
             create: {
               villaId,
-              accountHolderName: data.accountHolderName,
-              bankName: data.bankName,
-              accountNumber: data.accountNumber,
-              iban: data.iban,
-              swiftCode: data.swiftCode,
-              branchName: data.branchName,
-              branchCode: data.branchCode,
-              branchAddress: data.branchAddress || data.bankAddress,
-              bankAddress: data.bankAddress,
-              bankCountry: data.bankCountry,
-              currency: data.currency || 'USD',
-              accountType: data.accountType,
-              notes: data.notes,
-              isVerified: data.isVerified || false,
+              ...bankPayload,
             },
           });
           

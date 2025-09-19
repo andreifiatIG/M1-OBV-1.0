@@ -17,7 +17,7 @@ import {
   type StepDataUnion,
 } from "@/lib/data-mapper";
 import OnboardingLogger from "@/lib/onboarding-logger";
-import ProgressTracker from "./ProgressTracker";
+import ProgressTracker, { type StepValidationSummary } from "./ProgressTracker";
 import { toast } from "sonner";
 import { AlertCircle } from "lucide-react";
 import type {
@@ -29,7 +29,9 @@ import ErrorBoundary, {
   WizardErrorBoundary,
   StepErrorBoundary,
 } from "./ErrorBoundary";
-import { BackupData } from "./OnboardingBackupService";
+import OnboardingBackupService, {
+  BackupData,
+} from "./OnboardingBackupService";
 import RecoveryModal from "./RecoveryModal";
 import ValidationProvider, { useValidation } from "./ValidationProvider";
 import ValidationSummary from "./ValidationSummary";
@@ -67,6 +69,19 @@ interface OnboardingWizardContentProps {
 
 type StepDataMap = Record<string, StepDataUnion | Record<string, unknown>>;
 
+const normalizeStepDataMap = (input: unknown): StepDataMap => {
+  if (!input || typeof input !== 'object') {
+    return {};
+  }
+
+  const entries = Object.entries(input as Record<string, unknown>);
+  const normalized: StepDataMap = {};
+  for (const [key, value] of entries) {
+    normalized[String(key)] = value as StepDataUnion | Record<string, unknown>;
+  }
+  return normalized;
+};
+
 const isFlagTrue = (
   value: unknown,
   key: "conflict" | "validationErrors"
@@ -88,7 +103,36 @@ interface StepSaveResult {
   conflict?: boolean;
   validationErrors?: boolean;
   error?: Error;
+  warnings?: Record<string, string>;
 }
+
+const stepIdToTitle: Record<number, string> = {
+  1: "Villa Information",
+  2: "Owner Details",
+  3: "Contractual Details",
+  4: "Bank Details",
+  5: "OTA Credentials",
+  6: "Documents Upload",
+  7: "Staff Configuration",
+  8: "Facilities Checklist",
+  9: "Photo Upload",
+  10: "Review & Submit",
+};
+
+const formatFieldLabel = (fieldName: string): string => {
+  if (!fieldName || fieldName === '_step') {
+    return 'General Information';
+  }
+  const formatted = fieldName
+    .replace(/([A-Z])/g, ' $1')
+    .replace(/^./, (str) => str.toUpperCase())
+    .replace(/Id$/, ' ID')
+    .replace(/Url$/, ' URL')
+    .replace(/_/g, ' ')
+    .trim();
+
+  return formatted;
+};
 
 interface AutoSaveSummary {
   successfulSteps: number[];
@@ -128,8 +172,25 @@ const isRateLimited = (now: number, lastSaveTimestamp: number): boolean =>
   now - lastSaveTimestamp < AUTO_SAVE_CONFIG.minTimeBetweenSaves;
 
 const buildSaveBatch = (
-  batchedSaves: Map<number, Record<string, unknown>>
-): SaveBatchEntry[] => Array.from(batchedSaves.entries());
+  batchedSaves: Map<number, Record<string, unknown>>,
+  options: { blockedSteps?: Set<number>; maxBatchSize?: number } = {}
+): SaveBatchEntry[] => {
+  const { blockedSteps, maxBatchSize = AUTO_SAVE_CONFIG.maxBatchSize } = options;
+
+  const entries = Array.from(batchedSaves.entries()).filter(
+    ([step]) => !(blockedSteps && blockedSteps.has(step))
+  );
+
+  if (entries.length === 0) {
+    return [];
+  }
+
+  if (maxBatchSize > 0 && entries.length > maxBatchSize) {
+    return entries.slice(0, maxBatchSize);
+  }
+
+  return entries;
+};
 
 const summarizeSaveResults = (
   results: StepSaveResult[],
@@ -267,7 +328,7 @@ type BackupServiceLike = {
   saveProgressImmediate: (
     villaId: string | undefined,
     currentStep: number,
-    stepData: StepDataMap
+    stepData: Record<number, unknown>
   ) => Promise<void>;
 } | null;
 
@@ -283,10 +344,20 @@ const attemptBackupSave = async (
   }
 
   try {
+    const normalizedStepData = Object.entries(localStepData).reduce<
+      Record<number, unknown>
+    >((accumulator, [key, value]) => {
+      const match = /^step(\d+)$/.exec(key);
+      if (match) {
+        accumulator[Number(match[1])] = value;
+      }
+      return accumulator;
+    }, {});
+
     await backupService.saveProgressImmediate(
       villaId || undefined,
       currentStep,
-      localStepData
+      normalizedStepData
     );
   } catch (error) {
     const err = ensureError(error);
@@ -303,16 +374,25 @@ const readPersistedVillaId = (
     return { villaId: null, source: "none" };
   }
 
-  if (userId) {
-    const userSpecific = localStorage.getItem(`onboarding_villa_${userId}`);
-    if (userSpecific) {
-      return { villaId: userSpecific, source: "user-specific" };
-    }
-  }
+  const storageSources: Array<{ storage: Storage; label: "user-specific" | "generic" }> = [
+    { storage: sessionStorage, label: "user-specific" },
+    { storage: localStorage, label: "user-specific" },
+    { storage: sessionStorage, label: "generic" },
+    { storage: localStorage, label: "generic" },
+  ];
 
-  const generic = localStorage.getItem("currentVillaId");
-  if (generic) {
-    return { villaId: generic, source: "generic" };
+  for (const { storage, label } of storageSources) {
+    if (label == "user-specific" && userId) {
+      const userSpecific = storage.getItem(`onboarding_villa_${userId}`);
+      if (userSpecific) {
+        return { villaId: userSpecific, source: "user-specific" };
+      }
+    } else if (label === "generic") {
+      const generic = storage.getItem("currentVillaId");
+      if (generic) {
+        return { villaId: generic, source: "generic" };
+      }
+    }
   }
 
   return { villaId: null, source: "none" };
@@ -323,10 +403,13 @@ const storeVillaId = (villaId: string, userId: string | null | undefined) => {
     return;
   }
 
-  localStorage.setItem("currentVillaId", villaId);
-  if (userId) {
-    localStorage.setItem(`onboarding_villa_${userId}`, villaId);
-  }
+  const stores = [localStorage, sessionStorage];
+  stores.forEach((storage) => {
+    storage.setItem("currentVillaId", villaId);
+    if (userId) {
+      storage.setItem(`onboarding_villa_${userId}`, villaId);
+    }
+  });
 };
 
 const clearStoredVillaIds = (userId: string | null | undefined) => {
@@ -334,10 +417,13 @@ const clearStoredVillaIds = (userId: string | null | undefined) => {
     return;
   }
 
-  localStorage.removeItem("currentVillaId");
-  if (userId) {
-    localStorage.removeItem(`onboarding_villa_${userId}`);
-  }
+  const stores = [localStorage, sessionStorage];
+  stores.forEach((storage) => {
+    storage.removeItem("currentVillaId");
+    if (userId) {
+      storage.removeItem(`onboarding_villa_${userId}`);
+    }
+  });
 };
 
 const ensureLocalStorageConsistency = (
@@ -442,6 +528,7 @@ const saveStepBatchEntry = async ({
   stepVersionsRef,
   parseBackendErrors,
   applyBackendErrors,
+  applyBackendWarnings,
 }: {
   stepNum: number;
   stepData: Record<string, unknown>;
@@ -452,6 +539,7 @@ const saveStepBatchEntry = async ({
   stepVersionsRef: React.MutableRefObject<Record<number, number>>;
   parseBackendErrors: (rawErrors: unknown) => Record<string, string>;
   applyBackendErrors: (step: number, errors: Record<string, string>) => void;
+  applyBackendWarnings: (step: number, warnings: Record<string, string>) => void;
 }): Promise<StepSaveResult> => {
   const numericStep = Number(stepNum);
   const currentVersion = stepVersionsRef.current[numericStep] ?? 0;
@@ -475,15 +563,15 @@ const saveStepBatchEntry = async ({
     if (!response.success) {
       if (response.status === 422) {
         const parsedErrors = parseBackendErrors(response.errors || response.error);
-        applyBackendErrors(numericStep, parsedErrors);
-        logger.log(numericStep, "AUTOSAVE_VALIDATION_ERROR", {
+        applyBackendWarnings(numericStep, parsedErrors);
+        logger.log(numericStep, "AUTOSAVE_VALIDATION_WARNING", {
           ...operationMeta,
-          errors: parsedErrors,
+          warnings: parsedErrors,
         });
         return {
           stepNum: numericStep,
-          success: false,
-          validationErrors: true,
+          success: true,
+          warnings: parsedErrors,
         };
       }
 
@@ -538,6 +626,7 @@ const executeAutoSaveBatch = async ({
   stepVersionsRef,
   parseBackendErrors,
   applyBackendErrors,
+  applyBackendWarnings,
 }: {
   saveBatch: SaveBatchEntry[];
   authenticatedApi: ClientApiClient;
@@ -548,22 +637,27 @@ const executeAutoSaveBatch = async ({
   stepVersionsRef: React.MutableRefObject<Record<number, number>>;
   parseBackendErrors: (rawErrors: unknown) => Record<string, string>;
   applyBackendErrors: (step: number, errors: Record<string, string>) => void;
+  applyBackendWarnings: (step: number, warnings: Record<string, string>) => void;
 }): Promise<{ summary: AutoSaveSummary; results: StepSaveResult[] }> => {
-  const results = await Promise.all(
-    saveBatch.map(([stepNum, stepData]) =>
-      saveStepBatchEntry({
-        stepNum,
-        stepData,
-        authenticatedApi,
-        villaId,
-        currentOperationId,
-        logger,
-        stepVersionsRef,
-        parseBackendErrors,
-        applyBackendErrors,
-      })
-    )
-  );
+  const results: StepSaveResult[] = [];
+
+  for (const [stepNum, stepData] of saveBatch) {
+    /* eslint-disable no-await-in-loop */
+    const result = await saveStepBatchEntry({
+      stepNum,
+      stepData,
+      authenticatedApi,
+      villaId,
+      currentOperationId,
+      logger,
+      stepVersionsRef,
+      parseBackendErrors,
+      applyBackendErrors,
+      applyBackendWarnings,
+    });
+    results.push(result);
+    /* eslint-enable no-await-in-loop */
+  }
 
   return {
     summary: summarizeSaveResults(results, currentStep),
@@ -574,7 +668,7 @@ const executeAutoSaveBatch = async ({
 const refreshConflictedSteps = async ({
   conflictedSteps,
   villaId,
-  getToken,
+  ensureAuthenticatedApi,
   logger,
   isMountedRef,
   setOnboardingProgress,
@@ -586,7 +680,7 @@ const refreshConflictedSteps = async ({
 }: {
   conflictedSteps: number[];
   villaId: string | null;
-  getToken: () => Promise<string | null>;
+  ensureAuthenticatedApi: () => Promise<ClientApiClient>;
   logger: OnboardingLogger;
   isMountedRef: React.MutableRefObject<boolean>;
   setOnboardingProgress: Dispatch<SetStateAction<OnboardingProgress | null>>;
@@ -610,12 +704,7 @@ const refreshConflictedSteps = async ({
   }
 
   try {
-    const token = await getToken();
-    if (!token) {
-      throw new Error("Authentication token unavailable");
-    }
-
-    const api = new ClientApiClient(token);
+    const api = await ensureAuthenticatedApi();
     const progressResponse = await api.getOnboardingProgress(villaId);
     if (progressResponse.success && progressResponse.data && isMountedRef.current) {
       setOnboardingProgress(progressResponse.data);
@@ -861,7 +950,12 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
   const [currentStep, setCurrentStep] = useState(1);
   const [localStepData, setLocalStepData] = useState<StepDataMap>({});
   const [isLoading, setIsLoading] = useState(false);
-  const [hasLoadedInitialData, setHasLoadedInitialData] = useState(false);
+  const [hasLoadedInitialData, setHasLoadedInitialData] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return sessionStorage.getItem('onboarding_initial_load_complete') === 'true';
+    }
+    return false;
+  });
   const [autoSaveEnabled] = useState(AUTO_SAVE_CONFIG.enabled);
   const [lastSavedData, setLastSavedData] = useState<StepDataMap>({});
   const [isSaving, setIsSaving] = useState(false);
@@ -875,17 +969,26 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
   const [logger] = useState(() => OnboardingLogger.getInstance());
 
   // Backup and recovery state - TEMPORARILY DISABLED
-  const [backupService] = useState<null>(() => null);
+  const [backupService] = useState(() =>
+    OnboardingBackupService.getInstance({
+      debounceMs: AUTO_SAVE_CONFIG.debounceTime,
+      enableServerBackup: true,
+    })
+  );
   const [showRecoveryModal, setShowRecoveryModal] = useState(false);
   const [recoveryData, setRecoveryData] = useState<BackupData | null>(null);
+  const [isHydrated, setIsHydrated] = useState(false);
 
   const stepRefs = useRef<Array<StepHandle | null>>([]);
   const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const saveQueueRef = useRef<Set<number>>(new Set());
   const lastSaveTimeRef = useRef<number>(0);
   const batchedSavesRef = useRef<Map<number, Record<string, unknown>>>(new Map());
+  const validationBlockedStepsRef = useRef<Set<number>>(new Set());
   const saveInProgressRef = useRef<boolean>(false); // Prevent concurrent saves
   const saveOperationIdRef = useRef<number>(0); // Track save operations
+  const awaitingVillaFlushRef = useRef<boolean>(false);
+  const authenticatedApiRef = useRef<ClientApiClient | null>(null);
   const [stepVersions, setStepVersions] = useState<Record<number, number>>({});
   const stepVersionsRef = useRef(stepVersions);
 
@@ -896,24 +999,83 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
   // State for onboarding progress
   const [onboardingProgress, setOnboardingProgress] =
     useState<OnboardingProgress | null>(null);
-  const [villaId, setVillaId] = useState<string | null>(null);
+  const [villaId, setVillaId] = useState<string | null>(() => {
+    // Initialize with any persisted villa ID from localStorage
+    if (typeof window !== 'undefined') {
+      const persistedId = userId ? localStorage.getItem(`onboarding_villa_${userId}`) : localStorage.getItem('currentVillaId');
+      return persistedId || null;
+    }
+    return null;
+  });
   const [error, setError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState<number>(0);
   const [criticalError, setCriticalError] = useState<boolean>(false);
   // Prevent double-initialization in development/StrictMode
   const initialLoadRef = useRef(false);
+  // Track if we've ever successfully loaded data (persists across unmounts)
+  const hasEverLoadedRef = useRef(false);
 
-  const { applyBackendErrors, clearStepErrors, getStepErrors, warnings } =
+  const ensureAuthenticatedApi = useCallback(async (): Promise<ClientApiClient> => {
+    const token = await getToken();
+    if (!token) {
+      throw new Error("Authentication token unavailable");
+    }
+
+    if (!authenticatedApiRef.current) {
+      authenticatedApiRef.current = new ClientApiClient(token);
+      return authenticatedApiRef.current;
+    }
+
+    authenticatedApiRef.current.setToken(token);
+    return authenticatedApiRef.current;
+  }, [getToken]);
+
+  useEffect(() => {
+    backupService.setAuthTokenProvider(async () => {
+      try {
+        return await getToken();
+      } catch (error) {
+        logger.trackError("SYSTEM", ensureError(error), {
+          context: "backup_token_provider",
+        });
+        return null;
+      }
+    });
+  }, [backupService, getToken, logger]);
+
+  const {
+    applyBackendErrors,
+    applyBackendWarnings,
+    clearStepErrors,
+    getStepErrors,
+    warnings,
+  } =
     useValidation();
   const clearAllStepErrors = useCallback(() => {
     for (let i = 1; i <= totalSteps; i++) {
       clearStepErrors(i);
     }
+    validationBlockedStepsRef.current.clear();
   }, [clearStepErrors, totalSteps]);
 
   useEffect(() => {
     stepVersionsRef.current = stepVersions;
   }, [stepVersions]);
+
+  const getPendingBatchSize = useCallback(() => {
+    let count = 0;
+    const blocked = validationBlockedStepsRef.current;
+    batchedSavesRef.current.forEach((_, step) => {
+      if (!blocked.has(step)) {
+        count += 1;
+      }
+    });
+    return count;
+  }, []);
+
+  useEffect(() => {
+    setIsHydrated(true);
+  }, []);
 
   // Connection monitoring and error handling
   useEffect(() => {
@@ -1085,13 +1247,20 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
 
   // Helper function to handle auto-save execution logic
   const executeAutoSaveCore = useCallback(async (
-    token: string,
+    authenticatedApi: ClientApiClient,
     targetVillaId: string,
     currentOperationId: number
   ): Promise<boolean> => {
-    const authenticatedApi = new ClientApiClient(token);
-    const saveBatch = buildSaveBatch(batchedSavesRef.current);
-    const { summary } = await executeAutoSaveBatch({
+    const saveBatch = buildSaveBatch(batchedSavesRef.current, {
+      blockedSteps: validationBlockedStepsRef.current,
+      maxBatchSize: AUTO_SAVE_CONFIG.maxBatchSize,
+    });
+
+    if (saveBatch.length === 0) {
+      return true;
+    }
+
+    const { summary, results } = await executeAutoSaveBatch({
       saveBatch,
       authenticatedApi,
       villaId: targetVillaId,
@@ -1101,12 +1270,38 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
       stepVersionsRef,
       parseBackendErrors,
       applyBackendErrors,
+      applyBackendWarnings,
     });
+
+    const warningMessages = results
+      .filter((result) => result.warnings && Object.keys(result.warnings).length > 0)
+      .flatMap((result) =>
+        Object.entries(result.warnings ?? {}).map(([field, message]) => ({
+          step: result.stepNum,
+          field,
+          message,
+        }))
+      );
+
+    if (warningMessages.length > 0) {
+      const labels = warningMessages.map(({ field }) => formatFieldLabel(field));
+      const preview = labels.slice(0, 4).join(', ');
+      const suffix = labels.length > 4 ? '…' : '';
+
+      toast.warning(`Some details are still missing: ${preview}${suffix}`, {
+        description: 'You can keep going and revisit these fields later.',
+      });
+    }
 
     removeSuccessfulStepsFromBatch(
       summary.successfulSteps,
       batchedSavesRef.current
     );
+    if (summary.successfulSteps.length) {
+      summary.successfulSteps.forEach((step) =>
+        validationBlockedStepsRef.current.delete(step)
+      );
+    }
     clearErrorsForSteps(summary.successfulSteps, clearStepErrors);
     applyVersionUpdates(
       summary.versionUpdates,
@@ -1126,7 +1321,7 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
     await refreshConflictedSteps({
       conflictedSteps: summary.conflictedSteps,
       villaId: targetVillaId,
-      getToken,
+      ensureAuthenticatedApi,
       logger,
       isMountedRef,
       setOnboardingProgress,
@@ -1136,8 +1331,18 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
       stepVersionsRef,
       setStepVersions,
     });
+    if (summary.conflictedSteps.length) {
+      summary.conflictedSteps.forEach((step) =>
+        validationBlockedStepsRef.current.delete(step)
+      );
+    }
 
     notifyValidationIssues(summary.validationErrorSteps, currentStep);
+    if (summary.validationErrorSteps.length) {
+      summary.validationErrorSteps.forEach((step) =>
+        validationBlockedStepsRef.current.add(step)
+      );
+    }
 
     const hasValidationIssues = summary.validationErrorSteps.length > 0;
     const hasConflicts = summary.conflictedSteps.length > 0;
@@ -1168,7 +1373,7 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
     lastSavedData,
     setLastSavedData,
     setLastSaveTime,
-    getToken,
+    ensureAuthenticatedApi,
     setOnboardingProgress,
     setLocalStepData,
     backupService
@@ -1176,8 +1381,8 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
 
   // Helper function to check if auto-save should be skipped
   const shouldSkipAutoSaveCheck = useCallback((): boolean => {
-    const pendingBatchSize = batchedSavesRef.current.size;
-    return shouldSkipAutoSave({
+    const pendingBatchSize = getPendingBatchSize();
+    const skipWithoutRefs = shouldSkipAutoSave({
       userLoaded,
       authLoaded,
       hasUser: Boolean(user),
@@ -1185,8 +1390,27 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
       autoSaveEnabled,
       isSaving,
       pendingBatchSize,
-    }) || saveInProgressRef.current || !villaId;
-  }, [userLoaded, authLoaded, user, villaId, autoSaveEnabled, isSaving]);
+    });
+
+    const missingVillaId = !villaId;
+    if (missingVillaId && pendingBatchSize > 0) {
+      awaitingVillaFlushRef.current = true;
+    }
+
+    return (
+      skipWithoutRefs ||
+      saveInProgressRef.current ||
+      missingVillaId
+    );
+  }, [
+    userLoaded,
+    authLoaded,
+    user,
+    villaId,
+    autoSaveEnabled,
+    isSaving,
+    getPendingBatchSize,
+  ]);
 
   // Enhanced auto-save with batching and race condition prevention
   const performAutoSave = useCallback(async (): Promise<boolean> => {
@@ -1195,6 +1419,11 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
         logger.log("AUTOSAVE", "SAVE_ALREADY_IN_PROGRESS");
       }
       return true;
+    }
+
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current);
+      autoSaveTimeoutRef.current = null;
     }
 
     saveInProgressRef.current = true;
@@ -1214,24 +1443,26 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
     logger.startAutoSave(currentStep);
 
     try {
-      const token = await getToken();
-      if (!token) {
-        const authError = new Error("Authentication token unavailable");
-        logger.trackError("AUTOSAVE", authError, {
-          context: "auto_save_authentication",
-          villaId,
-          currentStep,
-        });
-        throw authError;
-      }
+      const api = await ensureAuthenticatedApi();
 
-      stepSuccess = await executeAutoSaveCore(token, villaId!, currentOperationId);
+      stepSuccess = await executeAutoSaveCore(
+        api,
+        villaId!,
+        currentOperationId
+      );
 
       logger.endAutoSave(
         currentStep,
         stepSuccess,
-        JSON.stringify(buildSaveBatch(batchedSavesRef.current)).length
+        JSON.stringify(
+          buildSaveBatch(batchedSavesRef.current, {
+            blockedSteps: validationBlockedStepsRef.current,
+            maxBatchSize: AUTO_SAVE_CONFIG.maxBatchSize,
+          })
+        ).length
       );
+
+      awaitingVillaFlushRef.current = false;
 
       if (isMountedRef.current) {
         setAutoSaveStatus(stepSuccess ? "idle" : "error");
@@ -1243,7 +1474,7 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
       logger.trackError("AUTOSAVE", err, {
         villaId,
         currentStep,
-        batchSize: batchedSavesRef.current.size,
+        batchSize: getPendingBatchSize(),
       });
       if (isMountedRef.current) {
         setAutoSaveStatus("error");
@@ -1266,11 +1497,65 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
     shouldSkipAutoSaveCheck,
     executeAutoSaveCore,
     currentStep,
-    getToken,
+    ensureAuthenticatedApi,
     logger,
     isOfflineMode,
     villaId,
+    getPendingBatchSize,
   ]);
+
+  useEffect(() => {
+    if (!villaId || !autoSaveEnabled) {
+      return;
+    }
+
+    if (!awaitingVillaFlushRef.current) {
+      return;
+    }
+
+    if (getPendingBatchSize() === 0) {
+      awaitingVillaFlushRef.current = false;
+      return;
+    }
+
+    performAutoSave().catch((error) => {
+      const err = ensureError(error);
+      logger.trackError("AUTOSAVE", err, {
+        context: "villa_ready_flush",
+      });
+    });
+  }, [villaId, autoSaveEnabled, performAutoSave, logger, getPendingBatchSize]);
+
+  useEffect(() => {
+    if (!AUTO_SAVE_CONFIG.enabled) {
+      return;
+    }
+
+    if (!AUTO_SAVE_CONFIG.periodicSaveInterval) {
+      return;
+    }
+
+    const intervalId = setInterval(() => {
+      if (!isMountedRef.current || saveInProgressRef.current) {
+        return;
+      }
+
+      if (getPendingBatchSize() === 0) {
+        return;
+      }
+
+      performAutoSave().catch((error) => {
+        const err = ensureError(error);
+        logger.trackError("AUTOSAVE", err, {
+          context: "periodic_flush",
+        });
+      });
+    }, AUTO_SAVE_CONFIG.periodicSaveInterval);
+
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [performAutoSave, logger, getPendingBatchSize]);
 
   // Enhanced update handler with intelligent batching
   const handleUpdate = useCallback(
@@ -1281,13 +1566,19 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
         Object.keys(data || {}).join(",")
       );
 
+      if (validationBlockedStepsRef.current.has(stepNumber)) {
+        validationBlockedStepsRef.current.delete(stepNumber);
+      }
+
+      const batchedSaves = batchedSavesRef.current;
+      if (batchedSaves.has(stepNumber)) {
+        batchedSaves.delete(stepNumber);
+      }
+      batchedSaves.set(stepNumber, data);
+
       if (isMountedRef.current) {
         setLocalStepData((prev) => {
           const updated = { ...prev, [`step${stepNumber}`]: data };
-
-          // Add to batched saves
-          batchedSavesRef.current.set(stepNumber, data);
-
           return updated;
         });
       }
@@ -1356,6 +1647,10 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
   // Enhanced data loading with performance tracking
   const loadOnboardingData = useCallback(
     async (forceNew = false) => {
+      if (!userLoaded || !authLoaded) {
+        return;
+      }
+
       if (!userId) {
         if (isMountedRef.current) {
           setError("Please sign in to access the onboarding wizard");
@@ -1371,16 +1666,14 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
       logger.startDataFetch("initial_load");
 
       try {
-        const token = await getToken();
-        if (!token) {
-          throw new Error("Authentication required. Please sign in again.");
-        }
-
-        const authenticatedApi = new ClientApiClient(token);
+        const authenticatedApi = await ensureAuthenticatedApi();
 
         if (forceNew) {
           logger.log("SYSTEM", "Force new session - skipping existing villa check");
           clearStoredVillaIds(userId);
+          if (isMountedRef.current) {
+            setHasLoadedInitialData(false);
+          }
           await startNewOnboardingSession({
             authenticatedApi,
             userId,
@@ -1396,65 +1689,66 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
             loadFieldProgress,
           });
           logger.endDataFetch("initial_load", true, 0);
-          return;
-        }
-
-        const { villaId: persistedVillaId, source } = readPersistedVillaId(userId);
-        logger.log("SYSTEM", "VILLA_ID_LOADING", {
-          userId,
-          persistedVillaId,
-          source,
-        });
-
-        let sessionLoaded = false;
-        if (persistedVillaId) {
-          sessionLoaded = await loadExistingSession({
+          // Fix: Don't return early - let the finally block execute
+          // return;
+        } else {
+          const { villaId: persistedVillaId, source } = readPersistedVillaId(userId);
+          logger.log("SYSTEM", "VILLA_ID_LOADING", {
+            userId,
             persistedVillaId,
             source,
-            authenticatedApi,
-            userId,
-            logger,
-            totalSteps,
-            isMountedRef,
-            setVillaId,
-            setCurrentStep,
-            setOnboardingProgress,
-            setLocalStepData,
-            setLastSavedData,
-            clearAllStepErrors,
-            stepVersionsRef,
-            setStepVersions,
-            loadFieldProgress,
           });
-        }
 
-        if (!sessionLoaded) {
+          let sessionLoaded = false;
           if (persistedVillaId) {
-            logger.log("SESSION", "STARTING_NEW_SESSION_AFTER_VALIDATION_FAILURE", {
-              previousVillaId: persistedVillaId,
+            sessionLoaded = await loadExistingSession({
+              persistedVillaId,
+              source,
+              authenticatedApi,
+              userId,
+              logger,
+              totalSteps,
+              isMountedRef,
+              setVillaId,
+              setCurrentStep,
+              setOnboardingProgress,
+              setLocalStepData,
+              setLastSavedData,
+              clearAllStepErrors,
+              stepVersionsRef,
+              setStepVersions,
+              loadFieldProgress,
             });
-          } else {
-            logger.log("SYSTEM", "No villa found, starting onboarding process");
           }
 
-          await startNewOnboardingSession({
-            authenticatedApi,
-            userId,
-            isMountedRef,
-            setVillaId,
-            setCurrentStep,
-            setOnboardingProgress,
-            setLocalStepData,
-            setLastSavedData,
-            clearAllStepErrors,
-            stepVersionsRef,
-            setStepVersions,
-            loadFieldProgress,
-          });
-        }
+          if (!sessionLoaded) {
+            if (persistedVillaId) {
+              logger.log("SESSION", "STARTING_NEW_SESSION_AFTER_VALIDATION_FAILURE", {
+                previousVillaId: persistedVillaId,
+              });
+            } else {
+              logger.log("SYSTEM", "No villa found, starting onboarding process");
+            }
 
-        logger.endDataFetch("initial_load", true);
-      } catch (error) {
+            await startNewOnboardingSession({
+              authenticatedApi,
+              userId,
+              isMountedRef,
+              setVillaId,
+              setCurrentStep,
+              setOnboardingProgress,
+              setLocalStepData,
+              setLastSavedData,
+              clearAllStepErrors,
+              stepVersionsRef,
+              setStepVersions,
+              loadFieldProgress,
+            });
+          }
+
+          logger.endDataFetch("initial_load", true);
+        }
+      } catch (error: unknown) {
         const err = ensureError(error);
         logger.endDataFetch("initial_load", false);
         logger.trackError("SYSTEM", err, {
@@ -1480,15 +1774,35 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
           );
         }
       } finally {
+        logger.log("SYSTEM", "FINALLY_BLOCK_EXECUTING", {
+          isMounted: isMountedRef.current,
+          hasEverLoaded: hasEverLoadedRef.current
+        });
+
+        // Mark that we've completed loading at least once
+        hasEverLoadedRef.current = true;
+
+        if (typeof window !== 'undefined') {
+          sessionStorage.setItem('onboarding_initial_load_complete', 'true');
+        }
+
         if (isMountedRef.current) {
           setIsLoading(false);
           setHasLoadedInitialData(true);
+          logger.log("SYSTEM", "LOADING_STATE_UPDATED", {
+            isLoading: false,
+            hasLoadedInitialData: true
+          });
+        } else {
+          logger.log("SYSTEM", "COMPONENT_UNMOUNTED_BUT_DATA_LOADED");
         }
       }
     },
     [
       userId,
-      getToken,
+      userLoaded,
+      authLoaded,
+      ensureAuthenticatedApi,
       loadFieldProgress,
       logger,
       handleErrorRecovery,
@@ -1498,73 +1812,6 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
     ]
   );
 
-  const validationSummary = useMemo(() => {
-    const summary: Record<number, { errors: number; warnings: number }> = {};
-    const warningMap = warnings as Record<string, Record<string, unknown>>;
-    for (let step = 1; step <= totalSteps; step++) {
-      const key = String(step);
-      const errorCount = Object.keys(getStepErrors(step) || {}).length;
-      const warningCount = Object.keys(warningMap[key] || {}).length;
-      if (errorCount > 0 || warningCount > 0) {
-        summary[step] = { errors: errorCount, warnings: warningCount };
-      }
-    }
-    return summary;
-  }, [getStepErrors, warnings, totalSteps]);
-
-  // Load data on mount
-  useEffect(() => {
-    // Guard against double-initialization (StrictMode/dev)
-    if (initialLoadRef.current) return;
-    initialLoadRef.current = true;
-
-    loadOnboardingData(forceNewSession).catch((error) => {
-      const err = ensureError(error);
-      logger.trackError("SYSTEM", err, {
-        context: "initial_data_load",
-      });
-    });
-  }, [loadOnboardingData, logger, forceNewSession]);
-
-  // Enhanced cleanup - Fix memory leaks
-  useEffect(() => {
-    const timeoutHandle = autoSaveTimeoutRef.current;
-    const batchedSaves = batchedSavesRef.current;
-    const saveQueue = saveQueueRef.current;
-    const stepHandles = stepRefs.current;
-
-    return () => {
-      // Mark component as unmounted to prevent state updates
-      isMountedRef.current = false;
-
-      // Clear all timeouts
-      if (timeoutHandle) {
-        clearTimeout(timeoutHandle);
-      }
-      autoSaveTimeoutRef.current = null;
-
-      // Clear all refs to prevent memory leaks
-      if (batchedSaves) {
-        batchedSaves.clear();
-      }
-      if (saveQueue) {
-        saveQueue.clear();
-      }
-
-      // Clear step refs
-      if (stepHandles) {
-        stepHandles.forEach((_, index) => {
-          stepHandles[index] = null;
-        });
-      }
-
-      stepRefs.current = [];
-
-      logger.log("SYSTEM", "COMPONENT_CLEANUP_COMPLETE");
-    };
-  }, [logger]);
-
-  // Optimized completedSteps calculation
   const completedSteps = useMemo(() => {
     if (!onboardingProgress) return [];
 
@@ -1593,11 +1840,127 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
     return steps;
   }, [onboardingProgress]);
 
+  const validationSummary = useMemo(() => {
+    const summary: StepValidationSummary = {};
+    const warningMap = warnings as Record<string, Record<string, { message: string }>>;
+
+    for (let step = 1; step <= totalSteps; step++) {
+      const key = String(step);
+      const stepErrors = getStepErrors(step) || {};
+      const stepWarnings = warningMap[key] || {};
+
+      const errorEntries = Object.entries(stepErrors);
+      const warningEntries = Object.entries(stepWarnings);
+
+      if (errorEntries.length > 0 || warningEntries.length > 0) {
+        const missingFields = Array.from(
+          new Set(
+            [...errorEntries, ...warningEntries].map(([field]) =>
+              formatFieldLabel(field)
+            )
+          )
+        );
+
+        summary[step] = {
+          errors: errorEntries.length,
+          warnings: warningEntries.length,
+          missingFields,
+          status: 'warning',
+        };
+      } else if (completedSteps.includes(step)) {
+        summary[step] = {
+          errors: 0,
+          warnings: 0,
+          missingFields: [],
+          status: 'complete',
+        };
+      } else {
+        summary[step] = {
+          errors: 0,
+          warnings: 0,
+          missingFields: [],
+          status: 'pending',
+        };
+      }
+    }
+
+    return summary;
+  }, [getStepErrors, warnings, totalSteps, completedSteps]);
+
+  // Load data on mount
+  useEffect(() => {
+    if (!userLoaded || !authLoaded) {
+      return;
+    }
+
+    // Guard against double-initialization (StrictMode/dev)
+    if (initialLoadRef.current) {
+      // If we've already loaded successfully before, restore the state
+      if (hasEverLoadedRef.current && isLoading) {
+        logger.log("SYSTEM", "RESTORING_LOADED_STATE_AFTER_REMOUNT");
+        setIsLoading(false);
+        setHasLoadedInitialData(true);
+      }
+      return;
+    }
+    initialLoadRef.current = true;
+
+    loadOnboardingData(forceNewSession).catch((error) => {
+      const err = ensureError(error);
+      logger.trackError("SYSTEM", err, {
+        context: "initial_data_load",
+      });
+    });
+  }, [loadOnboardingData, logger, forceNewSession, isLoading, userLoaded, authLoaded]);
+
+  // Enhanced cleanup - Fix memory leaks
+  useEffect(() => {
+    const timeoutHandle = autoSaveTimeoutRef.current;
+    const batchedSaves = batchedSavesRef.current;
+    const saveQueue = saveQueueRef.current;
+    const stepHandles = stepRefs.current;
+
+    return () => {
+      // Mark component as unmounted to prevent state updates
+      isMountedRef.current = false;
+
+      // Don't clear sessionStorage on unmount - we want it to persist
+      // Only clear it when explicitly starting a new session
+
+      // Clear all timeouts
+      if (timeoutHandle) {
+        clearTimeout(timeoutHandle);
+      }
+      autoSaveTimeoutRef.current = null;
+
+      // Clear all refs to prevent memory leaks
+      if (batchedSaves) {
+        batchedSaves.clear();
+      }
+      if (saveQueue) {
+        saveQueue.clear();
+      }
+
+      // Clear step refs
+      if (stepHandles) {
+        stepHandles.forEach((_, index) => {
+          stepHandles[index] = null;
+        });
+      }
+
+      stepRefs.current = [];
+
+      logger.log("SYSTEM", "COMPONENT_CLEANUP_COMPLETE");
+    };
+  }, [logger]);
+
   const progressPercentage = useMemo(() => {
     return Math.round((completedSteps.length / totalSteps) * 100);
   }, [completedSteps.length, totalSteps]);
 
   const stepData = localStepData;
+
+  const navigationLocked = isLoading && !hasLoadedInitialData;
 
   const nextButtonAriaLabel =
     currentStep === totalSteps
@@ -1605,7 +1968,7 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
       : "Continue to next step";
 
   let nextButtonLabel = "Next";
-  if (isLoading) {
+  if (navigationLocked) {
     nextButtonLabel = "Processing...";
   } else if (currentStep === totalSteps) {
     nextButtonLabel = "Complete Onboarding";
@@ -1632,6 +1995,26 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
     logger.startStepLoad(currentStep + 1);
 
     try {
+      const currentStepRef = stepRefs.current[currentStep - 1] || null;
+      if (currentStepRef?.validate && !currentStepRef.validate()) {
+        logger.endStepLoad(currentStep + 1, false);
+        toast.error("Please fix the highlighted fields before continuing.");
+        return;
+      }
+
+      if (currentStepRef?.getData) {
+        try {
+          const latestData = currentStepRef.getData();
+          if (latestData) {
+            handleUpdate(currentStep, latestData as Record<string, unknown>);
+          }
+        } catch (error) {
+          logger.trackError(currentStep, ensureError(error), {
+            context: "handleNext_getData",
+          });
+        }
+      }
+
       // Force save current step before moving
       const saveSuccessful = await performAutoSave();
       if (!saveSuccessful) {
@@ -1652,7 +2035,7 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
       logger.endStepLoad(currentStep + 1, false);
       toast.error("Failed to save current step before proceeding");
     }
-  }, [currentStep, totalSteps, performAutoSave, logger]);
+  }, [currentStep, totalSteps, performAutoSave, logger, handleUpdate]);
 
   const handlePrevious = useCallback(() => {
     if (currentStep <= 1) return;
@@ -1683,7 +2066,9 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
   // Recovery handlers
   const handleRecoverData = useCallback(
     (data: BackupData) => {
-      setLocalStepData(data.stepData);
+      const normalized = normalizeStepDataMap(data.stepData);
+      setLocalStepData(normalized);
+      setLastSavedData(normalized);
       setCurrentStep(data.currentStep);
       setVillaId(data.villaId || null);
       setShowRecoveryModal(false);
@@ -1745,7 +2130,7 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
       }
 
       if (event.key === "ArrowLeft") {
-        if (currentStep > 1 && !isLoading) {
+        if (currentStep > 1 && !navigationLocked) {
           event.preventDefault();
           handlePrevious();
         }
@@ -1753,7 +2138,7 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
       }
 
       if (event.key === "ArrowRight") {
-        if (currentStep < totalSteps && !isLoading) {
+        if (currentStep < totalSteps && !navigationLocked) {
           event.preventDefault();
           executeNextStep("keyboard_navigation_right");
         }
@@ -1761,7 +2146,7 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
       }
 
       if (event.key === "Enter" && !event.shiftKey) {
-        if (currentStep < totalSteps && !isLoading) {
+        if (currentStep < totalSteps && !navigationLocked) {
           event.preventDefault();
           executeNextStep("keyboard_navigation_enter");
         }
@@ -1769,7 +2154,7 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
       }
 
       const stepFromKey = resolveNumericStep(event.key);
-      if (stepFromKey && !isLoading && stepFromKey <= totalSteps) {
+      if (stepFromKey && !navigationLocked && stepFromKey <= totalSteps) {
         event.preventDefault();
         handleStepClick(stepFromKey);
       }
@@ -1777,7 +2162,7 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
     [
       currentStep,
       totalSteps,
-      isLoading,
+      navigationLocked,
       handlePrevious,
       executeNextStep,
       handleStepClick,
@@ -1842,6 +2227,11 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
   ]);
 
   if (isLoading && !hasLoadedInitialData) {
+    logger.log("RENDER", "SHOWING_LOADING_SCREEN", {
+      isLoading,
+      hasLoadedInitialData,
+      villaId
+    });
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -1937,7 +2327,7 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
                 <p className="text-slate-600">
                   Complete all steps to set up your villa for management
                 </p>
-                {villaId && (
+                {isHydrated && villaId && (
                   <p className="text-sm text-slate-500 mt-2">
                     Villa ID: {villaId}
                   </p>
@@ -1986,7 +2376,7 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
                 >
                   <button
                     onClick={handlePrevious}
-                    disabled={currentStep === 1 || isLoading}
+                    disabled={currentStep === 1 || navigationLocked}
                     aria-label="Go to previous step"
                     className="px-6 py-3 border border-slate-300 rounded-xl text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
                   >
@@ -2002,7 +2392,7 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
                         });
                       });
                     }}
-                    disabled={isLoading}
+                    disabled={navigationLocked}
                     aria-label={nextButtonAriaLabel}
                     className="px-6 py-3 bg-gradient-to-r from-[#009990] to-[#007a6b] text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-[#009990] focus:ring-opacity-50 disabled:opacity-50 disabled:cursor-not-allowed"
                   >

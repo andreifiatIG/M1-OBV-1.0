@@ -13,11 +13,26 @@
     "build:frontend": "cd frontend && npm run build",
     "db:setup": "cd backend && npm run db:migrate",
     "db:seed": "cd backend && npm run db:seed",
-    "test": "npm run test:backend && npm run test:frontend",
+    "test": "node run-all-tests.js",
+    "test:verbose": "node run-all-tests.js --verbose",
+    "test:coverage": "node run-all-tests.js --coverage",
     "test:backend": "cd backend && npm test",
-    "test:frontend": "cd frontend && npm test"
+    "test:frontend": "cd frontend && npm test",
+    "test:backend:watch": "cd backend && npm run test:watch",
+    "test:frontend:watch": "cd frontend && npm run test:watch",
+    "test:integration": "cd backend && npm run test:integration",
+    "test:all": "npm run test:backend && npm run test:frontend && npm run test:integration",
+    "quality:check": "npm run lint && npm run typecheck && npm run test",
+    "lint": "cd frontend && npm run lint",
+    "typecheck": "cd frontend && npm run typecheck",
+    "production:ready": "npm run quality:check && npm run build"
   },
   "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^8.44.0",
+    "@typescript-eslint/parser": "^8.44.0",
+    "eslint": "^9.35.0",
+    "eslint-plugin-next": "^0.0.0",
+    "eslint-plugin-react": "^7.37.5",
     "npm-run-all": "^4.1.5"
   },
   "engines": {

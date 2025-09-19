@@ -7,6 +7,38 @@ import {
   type StepDTOMap,
 } from "@contract/onboardingContract";
 
+
+const DEBUG_LOG_ENABLED =
+  process.env.NODE_ENV === "development" &&
+  process.env.NEXT_PUBLIC_DEBUG === "true";
+
+const debugLog = (...args: Parameters<typeof console.log>) => {
+  if (DEBUG_LOG_ENABLED) {
+    console.log(...args);
+  }
+};
+
+const debugWarn = (...args: Parameters<typeof console.warn>) => {
+  if (DEBUG_LOG_ENABLED) {
+    console.warn(...args);
+  }
+};
+
+const debugError = (...args: Parameters<typeof console.error>) => {
+  if (DEBUG_LOG_ENABLED) {
+    console.error(...args);
+  }
+};
+
+const debugDebug = (...args: Parameters<typeof console.debug>) => {
+  if (DEBUG_LOG_ENABLED) {
+    console.debug(...args);
+  }
+};
+
+// Union type aliases for better code readability
+type DateInput = string | number | Date;
+
 // Type definitions for data mapping
 interface VillaFrontendData {
   villaName?: string;
@@ -437,7 +469,7 @@ interface BackendFacilityData {
   notes?: string;
   specifications?: string;
   photoUrl?: string;
-  photoData?: Buffer | string;
+  photoData?: string | ArrayBuffer;
   photoMimeType?: string;
   photoSize?: number;
   productLink?: string;
@@ -499,7 +531,9 @@ interface BackendProgressData {
     staff?: BackendStaffData[];
     facilities?: BackendFacilityData[];
     photos?: BackendPhotoData[];
+    fieldProgress?: Record<string, unknown>;
   };
+  fieldProgress?: Record<string, unknown>;
 }
 
 export type StepDataUnion =
@@ -729,8 +763,12 @@ export function mapVillaDataToBackend(frontendData: VillaFrontendData) {
   // Helper to include a trimmed string only when non-empty
   const strOrUndef = (v: unknown) => {
     if (v === undefined || v === null) return undefined;
-    if (typeof v === 'object') return undefined;
-    if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
+    if (typeof v === "object") return undefined;
+    if (
+      typeof v === "string" ||
+      typeof v === "number" ||
+      typeof v === "boolean"
+    ) {
       const s = String(v).trim();
       return s.length > 0 ? s : undefined;
     }
@@ -767,6 +805,7 @@ export function mapVillaDataToBackend(frontendData: VillaFrontendData) {
     villaCode:
       frontendData.villaCode || generateVillaCode(frontendData.villaName || ""),
     location: strOrUndef(frontendData.location || frontendData.locationType),
+    locationType: strOrUndef(frontendData.locationType || frontendData.location),
     address: strOrUndef(frontendData.villaAddress || frontendData.address),
     city: strOrUndef(frontendData.villaCity || frontendData.city),
     country: strOrUndef(frontendData.villaCountry || frontendData.country),
@@ -824,7 +863,7 @@ export function mapVillaDataToFrontend(backendData: BackendVillaData) {
     process.env.NODE_ENV === "development" &&
     process.env.NEXT_PUBLIC_DEBUG === "true"
   ) {
-    console.log("Villa data mapping - input:", backendData);
+    debugLog("Villa data mapping - input:", backendData);
   }
   const result = {
     // Villa Information
@@ -878,7 +917,7 @@ export function mapVillaDataToFrontend(backendData: BackendVillaData) {
     process.env.NODE_ENV === "development" &&
     process.env.NEXT_PUBLIC_DEBUG === "true"
   ) {
-    console.log("Villa data mapping - output:", result);
+    debugLog("Villa data mapping - output:", result);
   }
   return result;
 }
@@ -934,6 +973,65 @@ export function mapOwnerDataToBackend(frontendData: OwnerFrontendData) {
   return finalizeStepPayload(2, raw);
 }
 
+// Helper functions for contractual details mapping
+function mapContractStartDate(
+  frontendData: ContractualDetailsFrontendData
+): string {
+  if (frontendData.contractSignatureDate?.trim()) {
+    return new Date(frontendData.contractSignatureDate).toISOString();
+  }
+  if (frontendData.contractStartDate?.trim()) {
+    return new Date(frontendData.contractStartDate).toISOString();
+  }
+  return new Date().toISOString();
+}
+
+function mapContractEndDate(
+  frontendData: ContractualDetailsFrontendData
+): string | null {
+  if (frontendData.contractRenewalDate?.trim()) {
+    return new Date(frontendData.contractRenewalDate).toISOString();
+  }
+  if (frontendData.contractEndDate?.trim()) {
+    return new Date(frontendData.contractEndDate).toISOString();
+  }
+  return null;
+}
+
+function mapCommissionRate(
+  frontendData: ContractualDetailsFrontendData
+): number {
+  if (frontendData.serviceCharge?.toString().trim()) {
+    return parseFloat(String(frontendData.serviceCharge));
+  }
+  if (frontendData.commissionRate?.toString().trim()) {
+    return parseFloat(String(frontendData.commissionRate));
+  }
+  return 0;
+}
+
+function mapOptionalFloat(value: unknown): number | null {
+  const stringValue = value?.toString().trim();
+  if (stringValue) {
+    const parsed = parseFloat(stringValue);
+    return isNaN(parsed) ? null : parsed;
+  }
+  return null;
+}
+
+function mapOptionalInt(value: unknown): number | null {
+  const stringValue = value?.toString().trim();
+  if (stringValue) {
+    const parsed = parseInt(stringValue, 10);
+    return isNaN(parsed) ? null : parsed;
+  }
+  return null;
+}
+
+function mapOptionalString(value: unknown): string | null {
+  return value?.toString().trim() || null;
+}
+
 /**
  * Map frontend contractual details to backend schema
  */
@@ -942,119 +1040,49 @@ export function mapContractualDetailsToBackend(
 ) {
   const raw = {
     // Contract Dates - Map contractSignatureDate to contractStartDate (frontend field -> backend field)
-    contractStartDate: (() => {
-      if (
-        frontendData.contractSignatureDate &&
-        frontendData.contractSignatureDate !== ""
-      ) {
-        return new Date(frontendData.contractSignatureDate).toISOString();
-      }
-      if (
-        frontendData.contractStartDate &&
-        frontendData.contractStartDate !== ""
-      ) {
-        return new Date(frontendData.contractStartDate).toISOString();
-      }
-      return new Date().toISOString(); // Use current date as fallback if no contract date provided
-    })(),
-    contractEndDate: (() => {
-      if (
-        frontendData.contractRenewalDate &&
-        frontendData.contractRenewalDate !== ""
-      ) {
-        return new Date(frontendData.contractRenewalDate).toISOString();
-      }
-      if (frontendData.contractEndDate && frontendData.contractEndDate !== "") {
-        return new Date(frontendData.contractEndDate).toISOString();
-      }
-      return null;
-    })(),
+    contractStartDate: mapContractStartDate(frontendData),
+    contractEndDate: mapContractEndDate(frontendData),
     contractType:
-      frontendData.contractType && frontendData.contractType !== ""
-        ? frontendData.contractType.toUpperCase()
-        : "EXCLUSIVE",
+      frontendData.contractType?.trim().toUpperCase() || "EXCLUSIVE",
 
     // Commission and Fees - Map serviceCharge to commissionRate
-    commissionRate: (() => {
-      if (frontendData.serviceCharge && frontendData.serviceCharge !== "") {
-        return parseFloat(String(frontendData.serviceCharge));
-      }
-      if (frontendData.commissionRate && frontendData.commissionRate !== "") {
-        return parseFloat(String(frontendData.commissionRate));
-      }
-      return 0;
-    })(),
-    managementFee:
-      frontendData.managementFee && frontendData.managementFee !== ""
-        ? parseFloat(String(frontendData.managementFee))
-        : null,
-    marketingFee:
-      frontendData.marketingFee && frontendData.marketingFee !== ""
-        ? parseFloat(String(frontendData.marketingFee))
-        : null,
+    commissionRate: mapCommissionRate(frontendData),
+    managementFee: mapOptionalFloat(frontendData.managementFee),
+    marketingFee: mapOptionalFloat(frontendData.marketingFee),
 
     // Payment Terms
-    paymentTerms:
-      frontendData.paymentTerms && frontendData.paymentTerms !== ""
-        ? frontendData.paymentTerms
-        : null,
-    paymentSchedule: frontendData.paymentSchedule
-      ? frontendData.paymentSchedule.toUpperCase()
-      : "MONTHLY",
+    paymentTerms: mapOptionalString(frontendData.paymentTerms),
+    paymentSchedule: frontendData.paymentSchedule?.toUpperCase() || "MONTHLY",
     minimumStayNights:
       parseInt(String(frontendData.minimumStayNights), 10) || 1,
-    payoutDay1:
-      frontendData.payoutDay1 && frontendData.payoutDay1 !== ""
-        ? parseInt(String(frontendData.payoutDay1), 10)
-        : null,
-    payoutDay2:
-      frontendData.payoutDay2 && frontendData.payoutDay2 !== ""
-        ? parseInt(String(frontendData.payoutDay2), 10)
-        : null,
+    payoutDay1: mapOptionalInt(frontendData.payoutDay1),
+    payoutDay2: mapOptionalInt(frontendData.payoutDay2),
 
     // VAT Information - NEWLY ADDED FIELDS
-    vatRegistrationNumber:
-      frontendData.vatRegistrationNumber &&
-      frontendData.vatRegistrationNumber !== ""
-        ? frontendData.vatRegistrationNumber
-        : null,
-    dbdNumber:
-      frontendData.dbdNumber && frontendData.dbdNumber !== ""
-        ? frontendData.dbdNumber
-        : null,
-    vatPaymentTerms:
-      frontendData.vatPaymentTerms && frontendData.vatPaymentTerms !== ""
-        ? frontendData.vatPaymentTerms
-        : null,
+    vatRegistrationNumber: mapOptionalString(
+      frontendData.vatRegistrationNumber
+    ),
+    dbdNumber: mapOptionalString(frontendData.dbdNumber),
+    vatPaymentTerms: mapOptionalString(frontendData.vatPaymentTerms),
     paymentThroughIPL: frontendData.paymentThroughIPL || false,
 
     // Policies
-    cancellationPolicy: frontendData.cancellationPolicy
-      ? frontendData.cancellationPolicy.toUpperCase()
-      : "MODERATE",
+    cancellationPolicy:
+      frontendData.cancellationPolicy?.toUpperCase() || "MODERATE",
     checkInTime: frontendData.checkInTime || "15:00",
     checkOutTime: frontendData.checkOutTime || "11:00",
 
     // Insurance
-    insuranceProvider:
-      frontendData.insuranceProvider && frontendData.insuranceProvider !== ""
-        ? frontendData.insuranceProvider
-        : null,
-    insurancePolicyNumber:
-      frontendData.insurancePolicyNumber &&
-      frontendData.insurancePolicyNumber !== ""
-        ? frontendData.insurancePolicyNumber
-        : null,
-    insuranceExpiry:
-      frontendData.insuranceExpiry && frontendData.insuranceExpiry !== ""
-        ? new Date(frontendData.insuranceExpiry).toISOString()
-        : null,
+    insuranceProvider: mapOptionalString(frontendData.insuranceProvider),
+    insurancePolicyNumber: mapOptionalString(
+      frontendData.insurancePolicyNumber
+    ),
+    insuranceExpiry: frontendData.insuranceExpiry?.trim()
+      ? new Date(frontendData.insuranceExpiry).toISOString()
+      : null,
 
     // Special Terms
-    specialTerms:
-      frontendData.specialTerms && frontendData.specialTerms !== ""
-        ? frontendData.specialTerms
-        : null,
+    specialTerms: mapOptionalString(frontendData.specialTerms),
   };
 
   return finalizeStepPayload(3, raw);
@@ -1136,20 +1164,28 @@ function getPositionDisplayName(enumValue: string): string {
   return positionMapping[enumValue] || enumValue;
 }
 
-// Helper function to derive transportation from benefits
+// Helper functions to derive transportation from benefits
+function getCompanyTransportation(): string {
+  return "Company Vehicle";
+}
+
+function getWalkingDistanceTransportation(): string {
+  return "Walking Distance";
+}
+
 function deriveTransportationFromBenefits(hasTransport: boolean): string {
-  return hasTransport ? "Company Vehicle" : "Walking Distance";
+  return hasTransport ? getCompanyTransportation() : getWalkingDistanceTransportation();
 }
 
 /**
  * Map frontend staff data to backend schema
  */
 export function mapStaffDataToBackend(frontendData: StaffFrontendData) {
-  console.log("🔍 SHERLOCK: mapStaffDataToBackend called with:", frontendData);
+  debugLog("🔍 SHERLOCK: mapStaffDataToBackend called with:", frontendData);
 
   // Validate required fields
   if (!frontendData.firstName || !frontendData.lastName) {
-    console.warn("⚠️ Staff data missing required firstName or lastName:", {
+    debugWarn("⚠️ Staff data missing required firstName or lastName:", {
       firstName: frontendData.firstName,
       lastName: frontendData.lastName,
     });
@@ -1286,7 +1322,7 @@ export function mapStaffDataToBackend(frontendData: StaffFrontendData) {
   // Log validation
   const hasRequiredFields =
     mappedData.firstName && mappedData.lastName && mappedData.position;
-  console.log("🔄 Mapped staff data for backend:", {
+  debugLog("Mapped staff data for backend:", {
     ...mappedData,
     emergencyContacts: `${
       Array.isArray(mappedData.emergencyContacts)
@@ -1297,14 +1333,11 @@ export function mapStaffDataToBackend(frontendData: StaffFrontendData) {
   });
 
   if (!hasRequiredFields) {
-    console.error(
-      "❌ Staff data validation failed - missing required fields:",
-      {
-        firstName: !!mappedData.firstName,
-        lastName: !!mappedData.lastName,
-        position: !!mappedData.position,
-      }
-    );
+    debugError("Staff data validation failed - missing required fields:", {
+      firstName: !!mappedData.firstName,
+      lastName: !!mappedData.lastName,
+      position: !!mappedData.position,
+    });
   }
 
   return mappedData;
@@ -1353,8 +1386,7 @@ export function mapOnboardingDataToBackend(
           { key: "vrbo", platform: "VRBO" },
           { key: "expedia", platform: "EXPEDIA" },
           { key: "agoda", platform: "AGODA" },
-          { key: "hotelsCom", platform: "HOTELS_COM" },
-          { key: "tripadvisor", platform: "TRIPADVISOR" },
+          { key: "marriottHomesVillas", platform: "MARRIOTT_HOMES_VILLAS" },
         ];
 
         // Process all platforms - include both listed and platforms with existing data
@@ -1378,7 +1410,7 @@ export function mapOnboardingDataToBackend(
             process.env.NODE_ENV === "development" &&
             process.env.NEXT_PUBLIC_DEBUG === "true"
           ) {
-            console.log(`OTA Platform ${key} (${platform}):`, {
+            debugLog(`OTA Platform ${key} (${platform}):`, {
               isListed,
               hasAnyData,
               fieldsPresent: {
@@ -1395,14 +1427,21 @@ export function mapOnboardingDataToBackend(
           if (isListed || hasAnyData) {
             platforms.push({
               platform,
-              username: (frontendDataWithOTA[`${key}Username`] as string) || null,
-              password: (frontendDataWithOTA[`${key}Password`] as string) || null,
-              propertyId: (frontendDataWithOTA[`${key}PropertyId`] as string) || null,
+              username:
+                (frontendDataWithOTA[`${key}Username`] as string) || null,
+              password:
+                (frontendDataWithOTA[`${key}Password`] as string) || null,
+              propertyId:
+                (frontendDataWithOTA[`${key}PropertyId`] as string) || null,
               apiKey: (frontendDataWithOTA[`${key}ApiKey`] as string) || null,
-              apiSecret: (frontendDataWithOTA[`${key}ApiSecret`] as string) || null,
-              listingUrl: (frontendDataWithOTA[`${key}ListingUrl`] as string) || null,
-              accountUrl: (frontendDataWithOTA[`${key}AccountUrl`] as string) || null,
-              propertyUrl: (frontendDataWithOTA[`${key}PropertyUrl`] as string) || null,
+              apiSecret:
+                (frontendDataWithOTA[`${key}ApiSecret`] as string) || null,
+              listingUrl:
+                (frontendDataWithOTA[`${key}ListingUrl`] as string) || null,
+              accountUrl:
+                (frontendDataWithOTA[`${key}AccountUrl`] as string) || null,
+              propertyUrl:
+                (frontendDataWithOTA[`${key}PropertyUrl`] as string) || null,
               isActive: isListed, // This will be true for listed, false for unlisted with data
             });
           }
@@ -1416,43 +1455,48 @@ export function mapOnboardingDataToBackend(
         let documentsInput: DocumentData[];
         if (Array.isArray(frontendData)) {
           documentsInput = frontendData;
-        } else if (Array.isArray((frontendData as { documents?: DocumentData[] })?.documents)) {
-          documentsInput = (frontendData as { documents: DocumentData[] }).documents;
+        } else if (
+          Array.isArray(
+            (frontendData as { documents?: DocumentData[] })?.documents
+          )
+        ) {
+          documentsInput = (frontendData as { documents: DocumentData[] })
+            .documents;
         } else {
           documentsInput = [];
         }
 
         // Map frontend document structure to backend schema
-        const mappedDocuments = documentsInput.map((doc: DocumentData) => ({
-          // Core document fields
-          type: doc.type || doc.documentType || "OTHER",
-          category: doc.category || "other",
-          filename: doc.filename || doc.fileName || doc.name,
-          originalName:
-            doc.originalName || doc.filename || doc.fileName || doc.name,
-          mimeType: doc.mimeType || doc.type || "application/octet-stream",
-          size: doc.size || 0,
+        const mappedDocuments = documentsInput.map((doc: DocumentData) => {
+          const uploadedAt =
+            doc.uploadedAt ||
+            doc.uploadedAtIso ||
+            doc.updatedAt ||
+            doc.createdAt ||
+            null;
 
-          // SharePoint integration fields
-          sharePointUrl: doc.sharePointUrl || doc.url,
-          sharePointFileId: doc.sharePointId || doc.sharePointFileId,
-          sharePointPath: doc.sharePointPath,
+          return {
+            // Core document fields
+            type: doc.type || doc.documentType || "OTHER",
+            category: doc.category || "other",
+            filename: doc.filename || doc.fileName || doc.name,
+            originalName:
+              doc.originalName || doc.filename || doc.fileName || doc.name,
+            mimeType:
+              doc.mimeType || doc.type || doc.fileType || "application/octet-stream",
+            size: doc.size ?? (doc as any).fileSize ?? 0,
 
-          // Upload status and metadata
-          uploadedAt:
-            doc.uploadedAt || doc.uploaded ? new Date().toISOString() : null,
-          isRequired: doc.isRequired || false,
-          isActive: doc.isActive !== false, // Default to true unless explicitly false
+            // SharePoint integration fields
+            sharePointUrl: doc.sharePointUrl || doc.url,
+            sharePointFileId: doc.sharePointId || doc.sharePointFileId,
+            sharePointPath: doc.sharePointPath,
 
-          // Document validation
-          validated: doc.validated || false,
-          validatedAt: doc.validatedAt,
-          validatedBy: doc.validatedBy,
-
-          // Additional metadata
-          description: doc.description || "",
-          notes: doc.notes || "",
-        }));
+            // Upload status and metadata
+            uploadedAt,
+            isRequired: doc.isRequired ?? false,
+            isActive: doc.isActive ?? true,
+          };
+        });
 
         return finalizeStepPayload(6, { documents: mappedDocuments });
       }
@@ -1462,22 +1506,26 @@ export function mapOnboardingDataToBackend(
         let staffArray: StaffFrontendData[];
         if (Array.isArray(frontendData)) {
           staffArray = frontendData;
-        } else if (Array.isArray((frontendData as { staff?: StaffFrontendData[] })?.staff)) {
+        } else if (
+          Array.isArray(
+            (frontendData as { staff?: StaffFrontendData[] })?.staff
+          )
+        ) {
           staffArray = (frontendData as { staff: StaffFrontendData[] }).staff;
         } else {
           staffArray = [];
         }
-        console.log(
+        debugLog(
           "🔄 Staff array for backend mapping:",
           staffArray.length,
           "members"
         );
-        console.log("🔄 Staff array content:", staffArray);
+        debugLog("🔄 Staff array content:", staffArray);
         const mappedStaffForBackend = staffArray.map(
           (staff: StaffFrontendData | BackendStaffData) =>
             mapStaffDataToBackend(staff as StaffFrontendData)
         );
-        console.log("🔄 Final staff data being sent to backend:", {
+        debugLog("🔄 Final staff data being sent to backend:", {
           staff: mappedStaffForBackend,
         });
         return finalizeStepPayload(7, { staff: mappedStaffForBackend });
@@ -1490,8 +1538,13 @@ export function mapOnboardingDataToBackend(
         let facilitiesInput: FacilityData[];
         if (Array.isArray(frontendData)) {
           facilitiesInput = frontendData;
-        } else if (Array.isArray((frontendData as { facilities?: FacilityData[] })?.facilities)) {
-          facilitiesInput = (frontendData as { facilities: FacilityData[] }).facilities;
+        } else if (
+          Array.isArray(
+            (frontendData as { facilities?: FacilityData[] })?.facilities
+          )
+        ) {
+          facilitiesInput = (frontendData as { facilities: FacilityData[] })
+            .facilities;
         } else {
           facilitiesInput = [];
         }
@@ -1534,14 +1587,21 @@ export function mapOnboardingDataToBackend(
                 ).substring(0, 100),
                 itemName: (facility.itemName || "").substring(0, 200),
                 // Handle both 'available' and 'isAvailable' field names
-                isAvailable: Boolean(facility.available ?? facility.isAvailable),
-                quantity:
-                  typeof facility.quantity === "number"
-                    ? facility.quantity
-                    : typeof facility.quantity === "string" &&
-                      !isNaN(parseInt(facility.quantity))
-                    ? Math.max(1, parseInt(facility.quantity)) // Min quantity 1
-                    : 1,
+                isAvailable: Boolean(
+                  facility.available ?? facility.isAvailable
+                ),
+                quantity: (() => {
+                  if (typeof facility.quantity === "number") {
+                    return facility.quantity;
+                  }
+                  if (
+                    typeof facility.quantity === "string" &&
+                    !isNaN(parseInt(facility.quantity))
+                  ) {
+                    return Math.max(1, parseInt(facility.quantity)); // Min quantity 1
+                  }
+                  return 1;
+                })(),
                 condition:
                   validateCondition(facility.condition || "") || "good",
                 notes: sanitizeText(facility.notes || facility.itemNotes || ""),
@@ -1565,7 +1625,7 @@ export function mapOnboardingDataToBackend(
 
               return mapped;
             } catch (error) {
-              console.error(`[MAPPER] Error mapping facility:`, error);
+              debugError(`[MAPPER] Error mapping facility:`, error);
               return null;
             }
           })
@@ -1576,12 +1636,17 @@ export function mapOnboardingDataToBackend(
       case 9: {
         // Photo Upload - Enhanced mapping
         // Handle both direct arrays and nested object structure
-        const photosInput = Array.isArray((frontendData as { photos?: PhotoData[] }).photos)
-          ? (frontendData as { photos: PhotoData[] }).photos
-          : Array.isArray(frontendData)
-          ? frontendData
-          : [];
-        const bedroomsInput = Array.isArray((frontendData as { bedrooms?: BedroomData[] }).bedrooms)
+        let photosInput: PhotoData[];
+        if (Array.isArray((frontendData as { photos?: PhotoData[] }).photos)) {
+          photosInput = (frontendData as { photos: PhotoData[] }).photos;
+        } else if (Array.isArray(frontendData)) {
+          photosInput = frontendData;
+        } else {
+          photosInput = [];
+        }
+        const bedroomsInput = Array.isArray(
+          (frontendData as { bedrooms?: BedroomData[] }).bedrooms
+        )
           ? (frontendData as { bedrooms: BedroomData[] }).bedrooms
           : [];
 
@@ -1636,17 +1701,21 @@ export function mapOnboardingDataToBackend(
       case 10: {
         // Review & Submit
         return finalizeStepPayload(10, {
-          reviewNotes: (frontendData as { reviewNotes?: string }).reviewNotes || "",
-          agreedToTerms: (frontendData as { agreedToTerms?: boolean }).agreedToTerms || false,
+          reviewNotes:
+            (frontendData as { reviewNotes?: string }).reviewNotes || "",
+          agreedToTerms:
+            (frontendData as { agreedToTerms?: boolean }).agreedToTerms ||
+            false,
           dataAccuracyConfirmed:
-            (frontendData as { dataAccuracyConfirmed?: boolean }).dataAccuracyConfirmed || false,
+            (frontendData as { dataAccuracyConfirmed?: boolean })
+              .dataAccuracyConfirmed || false,
         });
       }
       default:
         return finalizeStepPayload(typedStep, frontendData);
     }
   } catch (error) {
-    console.error(
+    debugError(
       `Error mapping frontend data to backend for step ${step}:`,
       error
     );
@@ -1876,7 +1945,9 @@ export function mapBackendProgressToStepData(
     villa.otaCredentials.forEach((cred: OTAPlatformData) => {
       const platformKey = mapOtaPlatformToFrontendKey(cred.platform);
       if (platformKey) {
-        otaData[`${platformKey}Listed`] = cred.isListed || false;
+        const isActive =
+          typeof cred.isActive === "boolean" ? cred.isActive : cred.isListed;
+        otaData[`${platformKey}Listed`] = Boolean(isActive);
         otaData[`${platformKey}Username`] = cred.username || "";
         otaData[`${platformKey}Password`] = cred.password || "";
         otaData[`${platformKey}PropertyId`] = cred.propertyId || "";
@@ -1890,11 +1961,36 @@ export function mapBackendProgressToStepData(
     stepData.step5 = otaData;
   }
 
-  // Steps 6-9: Ensure consistent object structure for all steps
-  stepData.step6 = { documents: villa.documents || [] };
-  stepData.step7 = { staff: (villa.staff || []) as StaffFrontendData[] };
-  stepData.step8 = { facilities: (villa.facilities || []) as FacilityData[] };
-  stepData.step9 = { photos: villa.photos || [], bedrooms: [] };
+  // Steps 6-9: Use dedicated mapping helpers to ensure consistent structure
+  const documentsData = mapOnboardingDataFromBackend(6, {
+    documents: villa.documents || [],
+  }) as StepDataUnion;
+  stepData.step6 = documentsData;
+
+  const staffData = mapOnboardingDataFromBackend(7, {
+    staff: villa.staff || [],
+  }) as StepDataUnion;
+  stepData.step7 = staffData;
+
+  const facilitiesData = mapOnboardingDataFromBackend(8, {
+    facilities: villa.facilities || [],
+  }) as StepDataUnion;
+  stepData.step8 = facilitiesData;
+
+  const villaFieldProgress =
+    (villa as { fieldProgress?: Record<string, unknown> }).fieldProgress ||
+    progressData.fieldProgress;
+  const bedroomsFromProgress = Array.isArray(
+    (villaFieldProgress as { bedrooms?: BedroomData[] })?.bedrooms
+  )
+    ? ((villaFieldProgress as { bedrooms?: BedroomData[] }).bedrooms as BedroomData[])
+    : [];
+
+  const photosData = mapOnboardingDataFromBackend(9, {
+    photos: villa.photos || [],
+    bedrooms: bedroomsFromProgress,
+  }) as StepDataUnion;
+  stepData.step9 = photosData;
 
   return validateStepDataStructure(stepData);
 }
@@ -1910,6 +2006,7 @@ function mapOtaPlatformToFrontendKey(platform: string): string | null {
     EXPEDIA: "expedia",
     AGODA: "agoda",
     HOTELS_COM: "hotelsCom",
+    MARRIOTT_HOMES_VILLAS: "marriottHomesVillas",
     TRIPADVISOR: "tripadvisor",
   };
   return mapping[platform] || null;
@@ -1935,11 +2032,8 @@ export function mapOnboardingDataFromBackend(
     switch (step) {
       case 1: // Villa Information
         return mapVillaDataToFrontend(backendData);
-      case 2: { // Owner Details - Updated mapping to match new frontend structure
-        console.log("🔄 mapOnboardingDataFromBackend - Owner data mapping:");
-        console.log("🔄 backendData keys:", Object.keys(backendData));
-        console.log("🔄 backendData values:", backendData);
-
+      case 2: {
+        // Owner Details - Updated mapping to match new frontend structure
         const result = {
           // Owner Type
           ownerType: backendData.ownerType,
@@ -1981,32 +2075,29 @@ export function mapOnboardingDataFromBackend(
           notes: backendData.notes,
         };
 
-        console.log("🔄 mapOnboardingDataFromBackend - Owner mapped result:");
-        console.log("🔄 result keys:", Object.keys(result));
-        console.log("🔄 result values:", result);
-
         return result;
       }
-      case 3: { // Contractual Details - Enhanced mapping
+      case 3: {
+        // Contractual Details - Enhanced mapping
         const contractResult = {
           // Contract Dates - Convert ISO dates to YYYY-MM-DD format for HTML date inputs
           contractSignatureDate: backendData.contractStartDate
-            ? new Date(backendData.contractStartDate as string | number | Date)
+            ? new Date(backendData.contractStartDate as DateInput)
                 .toISOString()
                 .split("T")[0]
             : "",
           contractRenewalDate: backendData.contractEndDate
-            ? new Date(backendData.contractEndDate as string | number | Date)
+            ? new Date(backendData.contractEndDate as DateInput)
                 .toISOString()
                 .split("T")[0]
             : "",
           contractStartDate: backendData.contractStartDate
-            ? new Date(backendData.contractStartDate as string | number | Date)
+            ? new Date(backendData.contractStartDate as DateInput)
                 .toISOString()
                 .split("T")[0]
             : "",
           contractEndDate: backendData.contractEndDate
-            ? new Date(backendData.contractEndDate as string | number | Date)
+            ? new Date(backendData.contractEndDate as DateInput)
                 .toISOString()
                 .split("T")[0]
             : "",
@@ -2045,7 +2136,7 @@ export function mapOnboardingDataFromBackend(
           insuranceProvider: backendData.insuranceProvider || "",
           insurancePolicyNumber: backendData.insurancePolicyNumber || "",
           insuranceExpiry: backendData.insuranceExpiry
-            ? new Date(backendData.insuranceExpiry as string | number | Date)
+            ? new Date(backendData.insuranceExpiry as DateInput)
                 .toISOString()
                 .split("T")[0]
             : "",
@@ -2056,8 +2147,9 @@ export function mapOnboardingDataFromBackend(
 
         return contractResult;
       }
-      case 4: { // Bank Details - Fixed frontend field mapping
-        console.log(
+      case 4: {
+        // Bank Details - Fixed frontend field mapping
+        debugLog(
           "🏦 mapOnboardingDataFromBackend step 4 - Backend input:",
           backendData
         );
@@ -2088,15 +2180,16 @@ export function mapOnboardingDataFromBackend(
           bankNotes: backendData.notes || "",
           notes: backendData.notes || "",
         };
-        console.log(
+        debugLog(
           "🏦 mapOnboardingDataFromBackend step 4 - Frontend result:",
           bankDetailsResult
         );
         return bankDetailsResult;
       }
-      case 5: { // OTA Credentials - Fixed backend data access
+      case 5: {
+        // OTA Credentials - Fixed backend data access
         // Convert backend array structure to flat frontend structure
-        console.log("🔄 Backend-to-frontend OTA mapping input:", backendData);
+        debugLog("🔄 Backend-to-frontend OTA mapping input:", backendData);
         const otaData: Record<string, string | boolean> = {};
         const platformMapping: Record<string, string> = {
           BOOKING_COM: "bookingCom",
@@ -2105,6 +2198,7 @@ export function mapOnboardingDataFromBackend(
           EXPEDIA: "expedia",
           AGODA: "agoda",
           HOTELS_COM: "hotelsCom",
+          MARRIOTT_HOMES_VILLAS: "marriottHomesVillas",
           TRIPADVISOR: "tripadvisor",
         };
 
@@ -2123,14 +2217,14 @@ export function mapOnboardingDataFromBackend(
 
         // Populate data from backend - backendData is directly the otaCredentials array
         const platforms = Array.isArray(backendData) ? backendData : [];
-        console.log(
+        debugLog(
           "Processing platforms from backend:",
           platforms.length,
           "platforms"
         );
         platforms.forEach((platform: OTAPlatformData) => {
           const key = platformMapping[platform.platform];
-          console.log(
+          debugLog(
             `Processing platform ${platform.platform} -> key ${key}:`,
             {
               isActive: platform.isActive,
@@ -2160,7 +2254,7 @@ export function mapOnboardingDataFromBackend(
               platform.accountUrl ||
               platform.propertyUrl;
 
-            console.log(`Backend-to-frontend mapping for ${key}:`, {
+            debugLog(`Backend-to-frontend mapping for ${key}:`, {
               platform: platform.platform,
               isActive: platform.isActive,
               hasCredentials,
@@ -2188,88 +2282,98 @@ export function mapOnboardingDataFromBackend(
           }
         });
 
-        console.log("🔄 Backend-to-frontend OTA mapping output:", otaData);
+        debugLog("🔄 Backend-to-frontend OTA mapping output:", otaData);
         return otaData;
       }
-      case 6: { // Documents Upload - Enhanced backend to frontend mapping
+      case 6: {
+        // Documents Upload - Enhanced backend to frontend mapping
         // Handle multiple backend data formats
-        const backendDocuments = Array.isArray(backendData)
-          ? backendData
-          : Array.isArray(backendData?.documents)
-          ? backendData.documents
-          : [];
+        let backendDocuments: DocumentData[];
+        if (Array.isArray(backendData)) {
+          backendDocuments = backendData;
+        } else if (Array.isArray(backendData?.documents)) {
+          backendDocuments = backendData.documents;
+        } else {
+          backendDocuments = [];
+        }
 
         // Map backend document structure to frontend expectations
-        const mappedDocuments = backendDocuments.map((doc: DocumentData) => ({
-          // Core document identification
-          id: doc.id,
-          name: doc.filename || doc.originalName || doc.name,
-          displayName:
-            doc.displayName || doc.originalName || doc.filename || doc.name,
+        const mappedDocuments = backendDocuments.map((doc: DocumentData) => {
+          const uploadedAt =
+            doc.uploadedAt ||
+            doc.uploadedAtIso ||
+            doc.updatedAt ||
+            doc.createdAt;
 
-          // Document type and categorization
-          type: doc.type || "OTHER",
-          category: doc.category || "other",
-          documentType: doc.type || "OTHER", // Alias for compatibility
+          return {
+            // Core document identification
+            id: doc.id,
+            documentId: doc.id,
+            name: doc.filename || doc.originalName || doc.name,
+            displayName:
+              doc.displayName || doc.originalName || doc.filename || doc.name,
 
-          // File metadata
-          filename: doc.filename || doc.originalName,
-          originalName: doc.originalName || doc.filename,
-          fileName: doc.filename || doc.originalName, // Alias for compatibility
-          mimeType: doc.mimeType || "application/octet-stream",
-          size: doc.size || 0,
+            // Document type and categorization
+            type: doc.type || doc.documentType || "OTHER",
+            category: doc.category || "other",
+            documentType: doc.type || doc.documentType || "OTHER",
 
-          // SharePoint integration
-          sharePointUrl: doc.sharePointUrl || doc.url,
-          sharePointId: doc.sharePointFileId || doc.sharePointId,
-          sharePointFileId: doc.sharePointFileId || doc.sharePointId, // Alias
-          sharePointPath: doc.sharePointPath,
-          url: doc.sharePointUrl || doc.url, // Primary URL
+            // File metadata
+            filename: doc.filename || doc.originalName,
+            originalName: doc.originalName || doc.filename,
+            fileName: doc.filename || doc.originalName,
+            mimeType: doc.mimeType || "application/octet-stream",
+            size: doc.size ?? (doc as any).fileSize ?? 0,
 
-          // Upload and validation status
-          uploaded: !!doc.uploadedAt,
-          uploadedAt: doc.uploadedAt,
-          isRequired: doc.isRequired || false,
-          isActive: doc.isActive !== false,
+            // SharePoint integration
+            sharePointUrl: doc.sharePointUrl || doc.url,
+            sharePointId: doc.sharePointFileId || doc.sharePointId,
+            sharePointFileId: doc.sharePointFileId || doc.sharePointId,
+            sharePointPath: doc.sharePointPath,
+            url: doc.sharePointUrl || doc.url,
 
-          // Validation metadata
-          validated: doc.validated || false,
-          validatedAt: doc.validatedAt,
-          validatedBy: doc.validatedBy,
+            // Upload metadata
+            uploaded: !!uploadedAt,
+            uploadedAt,
+            uploadedAtIso: uploadedAt,
+            isRequired: doc.isRequired ?? false,
+            isActive: doc.isActive ?? true,
 
-          // Additional metadata for frontend
-          description: doc.description || "",
-          notes: doc.notes || "",
-
-          // File state for UI
-          uploading: false, // Default state for loaded documents
-          error: null, // No errors for successfully loaded documents
-        }));
+            // File state for UI
+            uploading: false,
+            error: null,
+          };
+        });
 
         return {
           documents: mappedDocuments,
         };
       }
-      case 7: { // Staff Configuration - Enhanced mapping
-        console.log(
+      case 7: {
+        // Staff Configuration - Enhanced mapping
+        debugLog(
           "🔄 Processing backend staff data for step 7:",
           backendData
         );
         // Handle both direct array and nested staff array
-        const staffArray = Array.isArray(backendData)
-          ? backendData
-          : Array.isArray(backendData.staff)
-          ? backendData.staff
-          : [];
-        console.log("🔄 Staff array from backend:", staffArray);
+        let staffArray: BackendStaffData[];
+        if (Array.isArray(backendData)) {
+          staffArray = backendData;
+        } else if (Array.isArray(backendData.staff)) {
+          staffArray = backendData.staff;
+        } else {
+          staffArray = [];
+        }
+        debugLog("🔄 Staff array from backend:", staffArray);
         const mappedStaff = staffArray.map((staff: BackendStaffData) =>
           mapStaffDataToFrontend(staff)
         );
-        console.log("🔄 Mapped staff for frontend:", mappedStaff);
+        debugLog("🔄 Mapped staff for frontend:", mappedStaff);
         // FIX: Return staff array as expected by StaffConfiguratorStep
         return { staff: mappedStaff };
       }
-      case 8: { // Facilities - Backend to frontend mapping
+      case 8: {
+        // Facilities - Backend to frontend mapping
         // Accept multiple input formats for flexibility
         let backendFacilities;
         if (Array.isArray(backendData)) {
@@ -2297,7 +2401,7 @@ export function mapOnboardingDataFromBackend(
             try {
               // Validate required backend fields
               if (!facility.category || !facility.itemName) {
-                console.warn(
+                debugWarn(
                   `🏭 [MAPPER] Backend facility ${
                     index + 1
                   } missing required fields:`,
@@ -2342,13 +2446,14 @@ export function mapOnboardingDataFromBackend(
                 productLink: facility.productLink || "",
 
                 // Photo metadata for local storage
-                photoData: facility.photoData
-                  ? `data:${
-                      facility.photoMimeType || "image/jpeg"
-                    };base64,${Buffer.from(facility.photoData).toString(
-                      "base64"
-                    )}`
-                  : null,
+                photoData:
+                  typeof facility.photoData === "string"
+                    ? facility.photoData.startsWith("data:")
+                      ? facility.photoData
+                      : `data:${
+                          facility.photoMimeType || "image/jpeg"
+                        };base64,${facility.photoData}`
+                    : null,
                 photoMimeType: facility.photoMimeType,
                 photoSize: facility.photoSize,
 
@@ -2373,7 +2478,7 @@ export function mapOnboardingDataFromBackend(
 
               mappingResults.successful++;
 
-              console.debug(
+              debugDebug(
                 `🏭 [MAPPER] Successfully mapped facility ${index + 1}:`,
                 {
                   backend: `${facility.category}/${facility.itemName}`,
@@ -2385,11 +2490,11 @@ export function mapOnboardingDataFromBackend(
 
               return mapped;
             } catch (error) {
-              console.error(
+              debugError(
                 `🏭 [MAPPER] Error mapping facility ${index + 1}:`,
                 error
               );
-              console.error(
+              debugError(
                 `Facility mapping error:`,
                 error instanceof Error ? error.message : "Unknown error"
               );
@@ -2398,7 +2503,7 @@ export function mapOnboardingDataFromBackend(
           })
           .filter(Boolean); // Remove failed mappings
 
-        console.log("🏭 [MAPPER] Backend→Frontend mapping completed:", {
+        debugLog("🏭 [MAPPER] Backend→Frontend mapping completed:", {
           input: backendFacilities.length,
           processed: mappingResults.processed,
           successful: mappingResults.successful,
@@ -2407,7 +2512,7 @@ export function mapOnboardingDataFromBackend(
         });
 
         if (mappingResults.warnings.length > 0) {
-          console.warn(
+          debugWarn(
             "🏭 [MAPPER] Mapping warnings:",
             mappingResults.warnings
           );
@@ -2415,7 +2520,7 @@ export function mapOnboardingDataFromBackend(
 
         // Show sample of mapped data
         if (mappedFacilities.length > 0) {
-          console.log(
+          debugLog(
             "🏭 [MAPPER] Sample mapped facilities:",
             mappedFacilities.slice(0, 2)
           );
@@ -2423,7 +2528,8 @@ export function mapOnboardingDataFromBackend(
 
         return { facilities: mappedFacilities };
       }
-      case 9: { // Photos
+      case 9: {
+        // Photos
         // Map backend photo data to frontend format
         const mappedPhotos = (
           (backendData as { photos?: BackendPhotoData[] }).photos || []
@@ -2467,14 +2573,16 @@ export function mapOnboardingDataFromBackend(
           } catch {
             bedroomsData = [];
           }
-        } else if ((backendData as ExtendedBackendData).fieldProgress?.bedrooms) {
+        } else if (
+          (backendData as ExtendedBackendData).fieldProgress?.bedrooms
+        ) {
           try {
             const extendedData = backendData as ExtendedBackendData;
             const bedroomsField = extendedData.fieldProgress?.bedrooms;
             bedroomsData =
               typeof bedroomsField === "string"
                 ? JSON.parse(bedroomsField)
-                : bedroomsField as BedroomData[];
+                : (bedroomsField as BedroomData[]);
           } catch {
             bedroomsData = [];
           }
@@ -2490,7 +2598,8 @@ export function mapOnboardingDataFromBackend(
           bedrooms: bedroomsData,
         };
       }
-      case 10: { // Review
+      case 10: {
+        // Review
         return {
           reviewNotes: backendData.reviewNotes || "",
           agreedToTerms: backendData.agreedToTerms || false,
@@ -2500,7 +2609,7 @@ export function mapOnboardingDataFromBackend(
         return backendData;
     }
   } catch (error) {
-    console.error(
+    debugError(
       `Error mapping backend data to frontend for step ${step}:`,
       error
     );
@@ -2519,7 +2628,7 @@ export function mapOnboardingDataFromBackend(
  * Map backend staff data to frontend schema
  */
 export function mapStaffDataToFrontend(backendData: BackendStaffData) {
-  console.log("🔄 Mapping backend staff data to frontend:", backendData);
+  debugLog("🔄 Mapping backend staff data to frontend:", backendData);
 
   // Parse emergency contacts safely
   let parsedEmergencyContacts = [];
@@ -2532,7 +2641,7 @@ export function mapStaffDataToFrontend(backendData: BackendStaffData) {
       }
     }
   } catch (error) {
-    console.warn("Failed to parse emergency contacts:", error);
+    debugWarn("Failed to parse emergency contacts:", error);
     parsedEmergencyContacts = [];
   }
 
@@ -2609,7 +2718,7 @@ export function mapStaffDataToFrontend(backendData: BackendStaffData) {
     isActive: backendData.isActive !== false,
   };
 
-  console.log("🔄 Mapped staff data for frontend:", mappedData);
+  debugLog("🔄 Mapped staff data for frontend:", mappedData);
   return mappedData;
 }
 

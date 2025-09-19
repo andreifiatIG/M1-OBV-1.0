@@ -6,7 +6,7 @@ interface BackupData {
   sessionId: string;
   villaId?: string;
   currentStep: number;
-  stepData: Record<number, any>;
+  stepData: Record<number, unknown>;
   lastSaved: string;
   userAgent: string;
   version: string;
@@ -21,12 +21,12 @@ interface BackupOptions {
 
 class OnboardingBackupService {
   private static instance: OnboardingBackupService;
-  private sessionId: string;
+  private readonly sessionId: string;
   private saveTimeout?: NodeJS.Timeout;
-  private options: Required<BackupOptions>;
+  private readonly options: Required<BackupOptions>;
   private isOnline: boolean = true;
   private retryQueue: (() => Promise<void>)[] = [];
-  private apiUrl: string;
+  private readonly apiUrl: string;
   private getAuthToken: (() => Promise<string | null>) | null = null;
 
   private constructor(options: BackupOptions = {}) {
@@ -84,7 +84,7 @@ class OnboardingBackupService {
   public async saveProgress(
     villaId: string | undefined,
     currentStep: number,
-    stepData: Record<number, any>
+    stepData: Record<number, unknown>
   ): Promise<void> {
     if (this.saveTimeout) {
       clearTimeout(this.saveTimeout);
@@ -98,7 +98,7 @@ class OnboardingBackupService {
   public async saveProgressImmediate(
     villaId: string | undefined,
     currentStep: number,
-    stepData: Record<number, any>
+    stepData: Record<number, unknown>
   ): Promise<void> {
     if (this.saveTimeout) {
       clearTimeout(this.saveTimeout);
@@ -111,7 +111,7 @@ class OnboardingBackupService {
   private async performSave(
     villaId: string | undefined,
     currentStep: number,
-    stepData: Record<number, any>
+    stepData: Record<number, unknown>
   ): Promise<void> {
     const backupData: BackupData = {
       sessionId: this.sessionId,

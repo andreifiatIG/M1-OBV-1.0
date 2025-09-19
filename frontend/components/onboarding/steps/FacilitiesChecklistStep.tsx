@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useCallback, useEffect, useImperativeHandle, forwardRef, useMemo, useRef } from 'react';
-import { useDebouncedCallback } from 'use-debounce';
+import { useResponsiveDebouncedCallback } from '@/hooks/useResponsiveDebouncedCallback';
 import { 
   ClipboardList, Save, SkipForward, AlertCircle, 
   CheckCircle, Filter, Search, ArrowLeft
@@ -124,7 +124,7 @@ const FacilitiesChecklistStep = React.memo(forwardRef<StepHandle, FacilitiesChec
               if (temporaryItem) {
                 // Update a similar existing item instead of creating orphans
                 temporaryItem.available = savedFacility.isAvailable;
-                temporaryItem.notes = savedFacility.notes || '';
+                temporaryItem.itemNotes = savedFacility.notes || savedFacility.itemNotes || '';
                 temporaryItem.specifications = savedFacility.specifications || '';
                 temporaryItem.quantity = savedFacility.quantity || 1;
                 temporaryItem.condition = savedFacility.condition || 'good';
@@ -177,11 +177,11 @@ const FacilitiesChecklistStep = React.memo(forwardRef<StepHandle, FacilitiesChec
   }, [facilitiesData]);
 
   // Debounced update to reduce frequent re-renders and API calls
-  const debouncedOnUpdate = useDebouncedCallback(
-    (facilitiesArray: any[]) => {
-      onUpdate(facilitiesArray);
+  const debouncedOnUpdate = useResponsiveDebouncedCallback(
+    (payload: any) => {
+      onUpdate(payload);
     },
-    1000 // 1 second debounce
+    800
   );
 
   // Memoize facilities array transformation

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useImperativeHandle, forwardRef, useCallback, useMemo, useEffect } from 'react';
-import { useDebouncedCallback } from 'use-debounce';
+import { useResponsiveDebouncedCallback } from '@/hooks/useResponsiveDebouncedCallback';
 import { AlertCircle, Home } from 'lucide-react';
 import { StepHandle } from './types';
 import { countries } from '@/lib/countries';
@@ -50,7 +50,11 @@ const VillaInformationStepEnhanced = React.memo(forwardRef<StepHandle, VillaInfo
   
   // Update form data when data prop changes (when loading from backend)
   useEffect(() => {
-    if (data && Object.keys(data).length > 0 && !isTyping) {
+    if (isTyping) {
+      return;
+    }
+
+    if (data && Object.keys(data).length > 0) {
       console.log('[UPDATE] VillaInformationStep: Data prop changed, updating form data:', data);
       setFormData(() => {
         // Merge default data with incoming backend data
@@ -68,24 +72,20 @@ const VillaInformationStepEnhanced = React.memo(forwardRef<StepHandle, VillaInfo
         return merged;
       });
     }
-  }, [data, isTyping]);
+  }, [data, isTyping, defaultFormData]);
 
   // Debounced update to parent component
-  const debouncedUpdate = useDebouncedCallback(
-    (newFormData: any) => {
+  const debouncedUpdate = useResponsiveDebouncedCallback(
+    (newFormData: typeof defaultFormData) => {
       console.log('[UPDATE] Updating parent with:', newFormData);
       onUpdate(newFormData);
-      // Clear typing flag after update
-      setTimeout(() => setIsTyping(false), 1000);
     },
-    800 // Longer debounce to reduce API calls
+    600,
+    (typing) => setIsTyping(typing)
   );
 
   const handleInputChange = useCallback((field: string, value: string | number) => {
     console.log(`[UPDATE] Input changed: ${field} = ${value}`);
-    
-    // Set typing flag to prevent backend updates
-    setIsTyping(true);
     
     // Immediate local state update for UI responsiveness
     setFormData(prev => {

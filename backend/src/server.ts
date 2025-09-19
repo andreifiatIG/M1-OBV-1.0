@@ -6,13 +6,13 @@ import morgan from 'morgan';
 import dotenv from 'dotenv';
 import { rateLimit } from 'express-rate-limit';
 import { createServer } from 'http';
-import { PrismaClient } from '@prisma/client';
 import { logger, morganStream, performanceLogger } from './utils/logger';
 import microsoftGraphService from './services/integrations/microsoftGraphService';
 import sharePointService from './services/integrations/sharePointService';
 import websocketService from './services/integrations/websocketService';
 import { errorHandler, notFoundHandler, timeoutHandler } from './middleware/errorHandler';
 import { warmCache } from './middleware/cache';
+import prisma from './utils/prisma';
 
 // Import routers
 import villaRouter from './routes/villa-management/villas';
@@ -40,10 +40,8 @@ import documentsEnhancedRouter from './routes/media/documents-enhanced';
 // Load environment variables
 dotenv.config();
 
-// Initialize Prisma Client
-export const prisma = new PrismaClient({
-  log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
-});
+// Re-export shared Prisma Client for legacy imports
+export { prisma };
 
 // Initialize Express app and HTTP server
 const app: Express = express();

@@ -61,20 +61,37 @@ export class DataSyncManager {
     try {
       console.log('🔄 Syncing onboarding progress for villa:', villaId);
       
-      const response = await this.api.getOnboardingProgress(villaId);
+      // Prefer lightweight summary endpoint for dashboard views
+      let response = await this.api.getOnboardingProgressSummary(villaId);
+
+      if (!response.success) {
+        console.warn('Summary endpoint unavailable, falling back to full progress fetch');
+        response = await this.api.getOnboardingProgress(villaId);
+      }
       
       if (response.success && response.data) {
+        const data = response.data as {
+          currentStep?: number;
+          totalSteps?: number;
+          completedSteps?: number[];
+          stepData?: Record<string, unknown>;
+          completedStepsCount?: number;
+          completionPercentage?: number;
+          lastUpdatedAt?: string;
+        };
+        const completedSteps = Array.isArray(data.completedSteps) ? data.completedSteps : [];
+        const totalSteps = data.totalSteps || 10;
+        const progressPercentage = typeof data.completionPercentage === 'number'
+          ? data.completionPercentage
+          : this.calculateProgressPercentage(completedSteps, totalSteps);
         const progressData: VillaProgressData = {
           villaId,
-          currentStep: response.data.currentStep || 1,
-          totalSteps: response.data.totalSteps || 10,
-          completedSteps: response.data.completedSteps || [],
-          stepData: response.data.stepData || {},
-          progressPercentage: this.calculateProgressPercentage(
-            response.data.completedSteps || [],
-            response.data.totalSteps || 10
-          ),
-          lastUpdatedAt: new Date().toISOString(),
+          currentStep: data.currentStep || 1,
+          totalSteps,
+          completedSteps,
+          stepData: data.stepData || {},
+          progressPercentage,
+          lastUpdatedAt: data.lastUpdatedAt || new Date().toISOString(),
         };
 
         console.log('✅ Onboarding progress synced successfully');
@@ -107,67 +124,75 @@ export class DataSyncManager {
 
     try {
       console.log('Syncing villa profile for villa:', villaId);
-      
-      // Get both villa details and onboarding progress
-      const [villaResponse, onboardingResponse] = await Promise.all([
-        this.api.getVilla(villaId),
-        this.api.getOnboardingProgress(villaId)
-      ]);
 
-      if (villaResponse.success && onboardingResponse.success) {
-        const villaData = villaResponse.data;
-        const onboardingData = onboardingResponse.data;
+      const { villaData, onboardingData } = await this.fetchVillaAndOnboardingData(villaId);
 
-        // Sync specific data points that might be out of sync
-        const syncUpdates: Record<string, unknown> = {};
-        let hasUpdates = false;
+      await this.syncVillaInfo(villaId, villaData, onboardingData);
+      await this.syncOwnerDetails(villaId, onboardingData);
 
-        // Check if basic villa info needs syncing
-        if (onboardingData.stepData?.villaInfo) {
-          const onboardingVillaInfo = onboardingData.stepData.villaInfo;
-          
-          if (villaData.villaName !== onboardingVillaInfo.villaName) {
-            syncUpdates.villaName = onboardingVillaInfo.villaName;
-            hasUpdates = true;
-          }
-          
-          if (villaData.location !== onboardingVillaInfo.location) {
-            syncUpdates.location = onboardingVillaInfo.location;
-            hasUpdates = true;
-          }
-        }
-
-        // Check if owner details need syncing
-        if (onboardingData.stepData?.ownerDetails) {
-          const onboardingOwnerDetails = onboardingData.stepData.ownerDetails;
-          
-          // Update owner details through separate API call
-          await this.api.updateOwnerDetails(villaId, onboardingOwnerDetails);
-        }
-
-        // Apply villa updates if needed
-        if (hasUpdates) {
-          await this.api.updateVilla(villaId, syncUpdates);
-        }
-
-        console.log('Villa profile synced successfully');
-        this.notifySyncStatus({ 
-          syncing: false, 
-          success: true, 
-          lastSyncAt: new Date().toISOString() 
-        });
-        return true;
-      } else {
-        throw new Error('Failed to fetch villa or onboarding data');
-      }
+      console.log('Villa profile synced successfully');
+      this.notifySyncStatus({
+        syncing: false,
+        success: true,
+        lastSyncAt: new Date().toISOString()
+      });
+      return true;
     } catch (error) {
       console.error('Failed to sync villa profile:', error);
-      this.notifySyncStatus({ 
-        syncing: false, 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Unknown error' 
+      this.notifySyncStatus({
+        syncing: false,
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
       });
       return false;
+    }
+  }
+
+  private async fetchVillaAndOnboardingData(villaId: string) {
+    const [villaResponse, onboardingResponse] = await Promise.all([
+      this.api.getVilla(villaId),
+      this.api.getOnboardingProgress(villaId)
+    ]);
+
+    if (!villaResponse.success || !onboardingResponse.success) {
+      throw new Error('Failed to fetch villa or onboarding data');
+    }
+
+    return {
+      villaData: villaResponse.data as Record<string, unknown>,
+      onboardingData: onboardingResponse.data as Record<string, unknown>
+    };
+  }
+
+  private async syncVillaInfo(villaId: string, villaData: Record<string, unknown>, onboardingData: Record<string, unknown>) {
+    const syncUpdates: Record<string, unknown> = {};
+    let hasUpdates = false;
+
+    const stepData = onboardingData.stepData as Record<string, unknown> | undefined;
+    if (stepData?.villaInfo) {
+      const onboardingVillaInfo = stepData.villaInfo as Record<string, unknown>;
+
+      if (villaData.villaName !== onboardingVillaInfo.villaName) {
+        syncUpdates.villaName = onboardingVillaInfo.villaName;
+        hasUpdates = true;
+      }
+
+      if (villaData.location !== onboardingVillaInfo.location) {
+        syncUpdates.location = onboardingVillaInfo.location;
+        hasUpdates = true;
+      }
+    }
+
+    if (hasUpdates) {
+      await this.api.updateVilla(villaId, syncUpdates);
+    }
+  }
+
+  private async syncOwnerDetails(villaId: string, onboardingData: Record<string, unknown>) {
+    const stepData = onboardingData.stepData as Record<string, unknown> | undefined;
+    if (stepData?.ownerDetails) {
+      const onboardingOwnerDetails = stepData.ownerDetails;
+      await this.api.updateOwnerDetails(villaId, onboardingOwnerDetails as Record<string, unknown>);
     }
   }
 
@@ -183,8 +208,9 @@ export class DataSyncManager {
       // Get onboarding data which might have more recent owner info
       const onboardingResponse = await this.api.getOnboardingProgress(villaId);
       
-      if (onboardingResponse.success && onboardingResponse.data?.stepData?.ownerDetails) {
-        const ownerData = onboardingResponse.data.stepData.ownerDetails;
+      const responseData = onboardingResponse.data as { stepData?: { ownerDetails?: Record<string, unknown> } };
+      if (onboardingResponse.success && responseData?.stepData?.ownerDetails) {
+        const ownerData = responseData.stepData.ownerDetails;
         
         // Update owner details in the main villa record
         const updateResponse = await this.api.updateOwnerDetails(villaId, ownerData);
@@ -192,11 +218,11 @@ export class DataSyncManager {
         if (updateResponse.success) {
           const syncedOwnerData: OwnerData = {
             id: villaId, // Using villaId as owner reference
-            firstName: ownerData.firstName,
-            lastName: ownerData.lastName,
-            email: ownerData.email,
-            phone: ownerData.phone,
-            nationality: ownerData.nationality,
+            firstName: (ownerData.firstName as string) || '',
+            lastName: (ownerData.lastName as string) || '',
+            email: (ownerData.email as string) || '',
+            phone: (ownerData.phone as string) || '',
+            nationality: (ownerData.nationality as string) || undefined,
             villaId,
             updatedAt: new Date().toISOString(),
           };
@@ -261,7 +287,7 @@ export class DataSyncManager {
       const onboardingResponse = await this.api.getOnboardingProgress(villaId);
       
       if (onboardingResponse.success && onboardingResponse.data) {
-        const stepData = onboardingResponse.data.stepData || {};
+        const stepData = (onboardingResponse.data as Record<string, unknown> & { stepData?: Record<string, unknown> }).stepData || {};
         
         // Ensure staff data structure exists
         if (!stepData.staffConfiguration) {

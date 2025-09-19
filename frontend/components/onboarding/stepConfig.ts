@@ -11,7 +11,7 @@ export interface StepConfiguration {
 
 export interface ValidationRule {
   field: string;
-  type: 'required' | 'email' | 'url' | 'number' | 'min' | 'max' | 'pattern';
+  type: 'required' | 'recommended' | 'email' | 'url' | 'number' | 'min' | 'max' | 'pattern';
   value?: any;
   message: string;
 }
@@ -59,7 +59,18 @@ export const STEP_CONFIGURATIONS: Record<number, StepConfiguration> = {
       { field: 'phone', type: 'required', message: 'Phone number is required' },
       { field: 'address', type: 'required', message: 'Owner address is required' },
       { field: 'city', type: 'required', message: 'Owner city is required' },
-      { field: 'country', type: 'required', message: 'Owner country is required' }
+      { field: 'country', type: 'required', message: 'Owner country is required' },
+      { field: 'alternativePhone', type: 'recommended', message: 'Alternative phone helps with emergency contact information' },
+      { field: 'nationality', type: 'recommended', message: 'Nationality is recommended for owner identity verification' },
+      { field: 'passportNumber', type: 'recommended', message: 'Passport number or ID is recommended for compliance' },
+      { field: 'idNumber', type: 'recommended', message: 'Government ID number is recommended for compliance' },
+      { field: 'zipCode', type: 'recommended', message: 'Postal code improves mailing accuracy' },
+      { field: 'companyTaxId', type: 'recommended', message: 'Company tax ID is recommended for invoicing' },
+      { field: 'companyVat', type: 'recommended', message: 'Company VAT number is recommended for invoicing' },
+      { field: 'managerName', type: 'recommended', message: 'Manager name helps with on-site coordination' },
+      { field: 'managerEmail', type: 'recommended', message: 'Manager email is recommended for communications' },
+      { field: 'managerPhone', type: 'recommended', message: 'Manager phone ensures quick contact' },
+      { field: 'notes', type: 'recommended', message: 'Additional notes help the operations team' }
     ]
   },
   3: {
@@ -196,6 +207,11 @@ export const validateStepData = (stepNumber: number, data: any): StepValidationS
       case 'required':
         if (!value || (typeof value === 'string' && !value.trim())) {
           errors[rule.field] = rule.message;
+        }
+        break;
+      case 'recommended':
+        if (!value || (typeof value === 'string' && !value.trim())) {
+          warnings[rule.field] = rule.message;
         }
         break;
 

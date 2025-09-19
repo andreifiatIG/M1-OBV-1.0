@@ -1,11 +1,10 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { PrismaClient } from '@prisma/client';
 import { authenticate } from '../../middleware/auth';
 import { validateRequest } from '../../middleware/validation';
+import prisma from '../../utils/prisma';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // Validation schemas
 const createOwnerSchema = z.object({

@@ -1,3 +1,5 @@
+"use client";
+
 import {
   SignInButton,
   SignUpButton,
@@ -5,6 +7,7 @@ import {
   SignedOut,
   UserButton,
 } from "@clerk/nextjs";
+import type { PropsWithChildren } from "react";
 import GlobalNavigation from "@/components/GlobalNavigation";
 import { Toaster } from "sonner";
 
@@ -13,6 +16,9 @@ export default function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const SignedInClient = SignedIn as unknown as React.ComponentType<PropsWithChildren>;
+  const SignedOutClient = SignedOut as unknown as React.ComponentType<PropsWithChildren>;
+
   return (
     <>
       <header className="flex justify-between items-center p-4 gap-4 h-16 bg-white/20 backdrop-blur-lg border-b border-white/20">
@@ -27,7 +33,7 @@ export default function AppLayout({
         
         {/* User Actions */}
         <div className="flex items-center gap-4">
-        <SignedOut>
+        <SignedOutClient>
           <SignInButton>
             <button className="bg-white/20 backdrop-blur-md border border-white/30 text-slate-700 hover:text-slate-900 rounded-lg font-medium text-sm h-10 px-4 cursor-pointer transition-all duration-200">
               Sign In
@@ -38,11 +44,11 @@ export default function AppLayout({
               Sign Up
             </button>
           </SignUpButton>
-        </SignedOut>
-        <SignedIn>
+        </SignedOutClient>
+        <SignedInClient>
           <GlobalNavigation />
           <UserButton />
-        </SignedIn>
+        </SignedInClient>
         </div>
       </header>
       <main className="min-h-screen">

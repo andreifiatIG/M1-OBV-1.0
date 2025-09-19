@@ -18,7 +18,7 @@ export interface ApiResponse<T = any> {
   offline?: boolean;  // Offline mode indicator
   version?: number;
   retryAfter?: number | null;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 // Get Clerk token helper
@@ -30,7 +30,7 @@ async function getClerkToken(): Promise<string | null> {
 
   try {
     // Wait for Clerk to be available
-    const waitForClerk = (): Promise<any> => {
+    const waitForClerk = (): Promise<{ loaded: boolean; user?: unknown; session?: { getToken(): Promise<string> } }> => {
       return new Promise((resolve) => {
         if ((window as any).Clerk?.loaded) {
           resolve((window as any).Clerk);
@@ -69,7 +69,7 @@ async function getClerkToken(): Promise<string | null> {
 
 // Client-side API client for use in components
 export class ClientApiClient {
-  private baseURL: string;
+  private readonly baseURL: string;
   private token: string | null = null;
   private tokenExpiryTime: number | null = null;
   private isRefreshingToken: boolean = false;
@@ -129,7 +129,7 @@ export class ClientApiClient {
   private async attemptTokenRefresh(): Promise<string | null> {
     try {
       return await getClerkToken();
-    } catch (error) {
+    } catch {
       // Silent token refresh failure - should be handled by error reporting service
       return null;
     }
@@ -168,20 +168,28 @@ export class ClientApiClient {
       }
     }
 
+    const debugLoggingEnabled =
+      process.env.NODE_ENV === 'development' &&
+      process.env.NEXT_PUBLIC_DEBUG === 'true';
+
     try {
       const fullUrl = `${this.baseURL}${endpoint}`;
       
-      console.log('Making request to:', fullUrl);
+      if (debugLoggingEnabled) {
+        console.log('Making request to:', fullUrl);
+      }
       const response = await fetch(fullUrl, {
         ...options,
         headers,
       });
 
-      console.log('Response received:', { 
-        status: response.status, 
-        statusText: response.statusText,
-        ok: response.ok 
-      });
+      if (debugLoggingEnabled) {
+        console.log('Response received:', { 
+          status: response.status, 
+          statusText: response.statusText,
+          ok: response.ok 
+        });
+      }
 
       // Check if response is JSON by looking at content-type
       const contentType = response.headers.get('content-type');
@@ -194,7 +202,9 @@ export class ClientApiClient {
         } catch (parseError) {
           // If JSON parsing fails, treat as text response
           const textResponse = await response.text();
-          console.error('JSON parsing failed:', parseError);
+          if (debugLoggingEnabled) {
+            console.error('JSON parsing failed:', parseError);
+          }
           return {
             success: false,
             error: `Invalid JSON response: ${textResponse.substring(0, 100)}...`,
@@ -237,7 +247,7 @@ export class ClientApiClient {
         // Special handling for rate limit errors
         if (response.status === 429) {
           const retryAfter = response.headers.get('retry-after') || response.headers.get('x-ratelimit-reset');
-          const errorMessage = retryAfter 
+          const errorMessage = retryAfter
             ? `Rate limit exceeded. Please wait ${retryAfter} seconds and try again.`
             : data?.message || 'Too many requests. Please wait a moment and try again.';
           
@@ -304,7 +314,7 @@ export class ClientApiClient {
     return this.request(`/api/villas/${id}`);
   }
 
-  async createVilla(data: any) {
+  async createVilla(data: Record<string, unknown>) {
     // Use onboarding endpoint for villa creation during onboarding
     return this.request('/api/villas/onboarding', {
       method: 'POST',
@@ -312,7 +322,7 @@ export class ClientApiClient {
     });
   }
 
-  async updateVilla(id: string, data: any) {
+  async updateVilla(id: string, data: Record<string, unknown>) {
     return this.request(`/api/villas/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -322,7 +332,7 @@ export class ClientApiClient {
   async getCurrentUserVilla() {
     try {
       const villasResponse = await this.getVillas();
-      if (!villasResponse.success || !villasResponse.data || villasResponse.data.length === 0) {
+      if (!villasResponse.success || !villasResponse.data || (villasResponse.data as any[]).length === 0) {
         return {
           success: false,
           error: 'No villas found for current user',
@@ -331,7 +341,7 @@ export class ClientApiClient {
       }
       
       // Get the first villa (or the active one)
-      const villa = villasResponse.data[0];
+      const villa = (villasResponse.data as any[])[0];
       return await this.getVillaProfile(villa.id);
     } catch (error) {
       console.error('Error getting current user villa:', error);
@@ -366,7 +376,7 @@ export class ClientApiClient {
         };
       }
       
-      const { villa, ownerDetails, contractualDetails, bankDetails, otaCredentials, documents, staff, facilities, photos, agreements, onboarding } = response.data;
+      const { villa, ownerDetails, contractualDetails, bankDetails, otaCredentials, documents, staff, facilities, photos, agreements, onboarding } = response.data as any;
       
       // Extract nested data from villa object if it exists
       const actualStaff = staff || villa?.staff || [];
@@ -604,17 +614,21 @@ export class ClientApiClient {
     return this.request(`/api/onboarding/${villaId}`);
   }
 
-  async updateOnboardingProgress(villaId: string, data: any) {
+  async getOnboardingProgressSummary(villaId: string) {
+    return this.request(`/api/onboarding/${villaId}/summary`);
+  }
+
+  async updateOnboardingProgress(villaId: string, data: Record<string, unknown>) {
     return this.request(`/api/onboarding/${villaId}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
   }
 
-  async saveOnboardingStep(villaId: string, step: number, data: any, options: { version?: number } = {}) {
+  async saveOnboardingStep(villaId: string, step: number, data: Record<string, unknown>, options: { version?: number } = {}) {
     const typedStep: OnboardingStep = assertOnboardingStep(step);
 
-    let normalizedPayload: any;
+    let normalizedPayload: Record<string, unknown>;
     try {
       const canonical = canonicalizeStepData(typedStep, data);
       normalizedPayload = validateStepPayload(typedStep, canonical, false);
@@ -656,18 +670,18 @@ export class ClientApiClient {
   async autoSaveOnboardingStep(
     villaId: string,
     step: number,
-    data: any,
+    data: Record<string, unknown>,
     version: number,
     metadata: { operationId?: string | number; clientTimestamp?: string } = {}
   ) {
-    const headers: any = {
+    const headers: Record<string, string> = {
       'X-Auto-Save': 'true',
       'If-Match': version.toString(),
     };
 
     const typedStep: OnboardingStep = assertOnboardingStep(step);
 
-    let normalizedPayload: any;
+    let normalizedPayload: Record<string, unknown>;
     try {
       const canonical = canonicalizeStepData(typedStep, data);
       normalizedPayload = validateStepPayload(typedStep, canonical, false);
@@ -692,7 +706,7 @@ export class ClientApiClient {
   }
 
   // Field-level auto-save methods
-  async saveFieldProgress(villaId: string, step: number, field: string, value: any) {
+  async saveFieldProgress(villaId: string, step: number, field: string, value: unknown) {
     return this.request(`/api/onboarding/${villaId}/field-progress/${step}/${field}`, {
       method: 'PUT',
       body: JSON.stringify({ value }),
@@ -716,21 +730,32 @@ export class ClientApiClient {
 
 
   // Villa Profile methods (missing from original)
-  async updateBankDetails(villaId: string, data: any) {
+  async updateBankDetails(villaId: string, data: Record<string, unknown>) {
     return this.request(`/api/villas/${villaId}/bank-details`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
   }
 
-  async updateContractualDetails(villaId: string, data: any) {
+  async updateContractualDetails(villaId: string, data: Record<string, unknown>) {
     return this.request(`/api/villas/${villaId}/contractual-details`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
   }
 
-  async uploadDocument(villaId: string, formData: FormData) {
+  async uploadDocument(villaId: string, formData: FormData): Promise<ApiResponse<any>>;
+  async uploadDocument(villaId: string, documentType: string, file: File): Promise<ApiResponse<any>>;
+  async uploadDocument(villaId: string, formDataOrType: FormData | string, file?: File) {
+    const formData = formDataOrType instanceof FormData ? formDataOrType : (() => {
+      const payload = new FormData();
+      payload.append('documentType', formDataOrType);
+      if (file) {
+        payload.append('file', file);
+      }
+      return payload;
+    })();
+
     return this.request(`/api/villas/${villaId}/documents`, {
       method: 'POST',
       body: formData,
@@ -743,21 +768,21 @@ export class ClientApiClient {
     });
   }
 
-  async updateFacilities(villaId: string, data: any) {
+  async updateFacilities(villaId: string, data: Record<string, unknown>) {
     return this.request(`/api/villas/${villaId}/facilities`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
   }
 
-  async updateOTACredentials(villaId: string, data: any) {
+  async updateOTACredentials(villaId: string, data: Record<string, unknown>) {
     return this.request(`/api/villas/${villaId}/ota-credentials`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
   }
 
-  async updateOwnerDetails(villaId: string, data: any) {
+  async updateOwnerDetails(villaId: string, data: Record<string, unknown>) {
     return this.request(`/api/villas/${villaId}/owner-details`, {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -780,7 +805,7 @@ export class ClientApiClient {
   }
 
 
-  async addStaffMember(villaId: string, data: any) {
+  async addStaffMember(villaId: string, data: Record<string, unknown>) {
     return this.request(`/api/villas/${villaId}/staff`, {
       method: 'POST',
       body: JSON.stringify(data),
@@ -828,14 +853,14 @@ export class ClientApiClient {
     return this.request(`/api/staff/villa/${villaId}`);
   }
 
-  async createStaff(staffData: any) {
+  async createStaff(staffData: Record<string, unknown>) {
     return this.request('/api/staff', {
       method: 'POST',
       body: JSON.stringify(staffData),
     });
   }
 
-  async updateStaff(staffId: string, staffData: any) {
+  async updateStaff(staffId: string, staffData: Record<string, unknown>) {
     return this.request(`/api/staff/${staffId}`, {
       method: 'PUT',
       body: JSON.stringify(staffData),

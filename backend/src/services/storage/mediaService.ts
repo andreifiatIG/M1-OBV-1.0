@@ -1,9 +1,8 @@
-import { PrismaClient, Photo, Document } from '@prisma/client';
+import { Photo, Document } from '@prisma/client';
 import sharp from 'sharp';
 import { logger } from '../../utils/logger';
 import sharePointService from '../integrations/sharePointService';
-
-const prisma = new PrismaClient();
+import prisma from '../../utils/prisma';
 
 export interface MediaUploadOptions {
   villaId: string;
@@ -34,6 +33,7 @@ export interface DocumentUploadResult {
   fileName: string;
   fileUrl: string;
   sharePointUrl?: string;
+  sharePointPath?: string;
   sharePointFileId?: string;
   documentType: string;
 }
@@ -231,13 +231,15 @@ class MediaService {
       try {
         const sharePointStatus = sharePointService.getStatus();
         if (sharePointStatus.enabled) {
-          const sharePointPath = this.getSharePointPath('documents', documentType);
-          sharePointResult = await sharePointService.uploadFile(
-            fileBuffer,
-            fileName,
-            sharePointPath,
+          sharePointResult = await sharePointService.uploadDocument(
             villaId,
-            mimeType
+            documentType,
+            fileName,
+            fileBuffer,
+            mimeType,
+            {
+              createRecord: false
+            }
           );
           
           logger.info(`[MEDIA] SharePoint upload successful: ${fileName}`, {
@@ -263,6 +265,7 @@ class MediaService {
           documentType: documentType as any,
           sharePointFileId: sharePointResult?.fileId || null,
           sharePointPath: sharePointResult?.filePath || null,
+          sharePointUrl: sharePointResult?.fileUrl || null,
           fileContent: fileBuffer,
           storageLocation: 'database'
         }
@@ -279,7 +282,8 @@ class MediaService {
         id: document.id,
         fileName: document.fileName,
         fileUrl: `/api/documents/public/${document.id}`,
-        sharePointUrl: document.sharePointPath || undefined,
+        sharePointUrl: document.sharePointUrl || undefined,
+        sharePointPath: document.sharePointPath || undefined,
         sharePointFileId: document.sharePointFileId || undefined,
         documentType: document.documentType
       };
@@ -351,7 +355,8 @@ class MediaService {
         id: document.id,
         fileName: document.fileName,
         fileUrl: `/api/documents/public/${document.id}`,
-        sharePointUrl: document.sharePointPath || undefined,
+        sharePointUrl: document.sharePointUrl || undefined,
+        sharePointPath: document.sharePointPath || undefined,
         sharePointFileId: document.sharePointFileId || undefined,
         documentType: document.documentType
       }));

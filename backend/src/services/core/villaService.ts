@@ -1,9 +1,8 @@
-import { PrismaClient, Villa, Prisma, VillaStatus } from '@prisma/client';
+import { Villa, Prisma, VillaStatus } from '@prisma/client';
 import { logger } from '../../utils/logger';
 // import { ElectricClient } from 'electric-sql/client'; // Removed - using mock implementation
 import { generateVillaCode } from '../../utils/helpers';
-
-const prisma = new PrismaClient();
+import prisma from '../../utils/prisma';
 
 export interface CreateVillaInput {
   villaName: string;

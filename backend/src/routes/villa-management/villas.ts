@@ -3,18 +3,17 @@ import { z } from 'zod';
 import villaService from "../../services/core/villaService";
 import { simpleClerkAuth } from '../../middleware/simpleClerkAuth';
 import { validateRequest } from '../../middleware/validation';
-import { PrismaClient, VillaStatus } from '@prisma/client';
+import { VillaStatus } from '@prisma/client';
 import { BankDetailsService } from "../../services/core/bankDetailsService";
 import { mediaService } from "../../services/storage/mediaService";
 import onboardingService from "../../services/core/onboardingService";
+import prisma from '../../utils/prisma';
 
 const router = Router();
 
 // Apply simple auth middleware to all routes for development
 const authenticate = simpleClerkAuth;
 
-// Local services/clients
-const prisma = new PrismaClient();
 const bankDetailsService = new BankDetailsService();
 
 // Simple authorization middleware

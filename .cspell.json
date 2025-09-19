@@ -6,7 +6,9 @@
     "vrbo",
     "agoda",
     "ensuite",
-    "aircon"
+    "aircon",
+    "bytea",
+    "unskipped"
   ],
   "caseSensitive": false,
   "allowCompoundWords": true,

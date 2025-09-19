@@ -172,15 +172,30 @@ export interface BedroomData {
 
 export interface DocumentData {
   id?: string;
-  type: string;
-  filename: string;
-  originalName: string;
-  mimeType: string;
-  size: number;
-  url: string;
-  uploadedAt: string;
-  isRequired: boolean;
-  isActive: boolean;
+  documentId?: string;
+  type?: string;
+  documentType?: string;
+  category?: string;
+  filename?: string;
+  fileName?: string;
+  originalName?: string;
+  mimeType?: string;
+  size?: number;
+  url?: string;
+  sharePointUrl?: string;
+  sharePointPath?: string;
+  sharePointId?: string;
+  sharePointFileId?: string;
+  uploadedAt?: string;
+  uploadedAtIso?: string;
+  uploaded?: boolean;
+  isRequired?: boolean;
+  isActive?: boolean;
+  description?: string;
+  notes?: string;
+  validated?: boolean;
+  validatedAt?: string;
+  validatedBy?: string;
 }
 
 export interface OnboardingStepData {

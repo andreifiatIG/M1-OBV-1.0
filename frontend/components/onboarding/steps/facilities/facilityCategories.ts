@@ -15,8 +15,13 @@ export interface FacilityItem {
   condition?: 'new' | 'good' | 'fair' | 'poor';
   itemNotes?: string;
   photoUrl?: string;
+  photoData?: string;
+  photoMimeType?: string;
+  photoSize?: number;
   specifications?: string;
   productLink?: string;
+  sharePointUrl?: string;
+  thumbnailUrl?: string;
 }
 
 export interface FacilityCategory {

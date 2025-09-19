@@ -18,7 +18,9 @@ interface DocumentFile {
   file: File;
   uploaded: boolean;
   sharePointUrl?: string;
-  uploadedAt?: number;
+  sharePointFileId?: string;
+  documentId?: string;
+  uploadedAtIso?: string;
 }
 
 interface DocumentItem {
@@ -131,17 +133,27 @@ const DocumentsUploadStep = forwardRef<StepHandle, DocumentsUploadStepProps>((
       
       const result = await response.json();
       console.log('[SUCCESS] SharePoint upload successful:', result);
+
+      const documentResult = Array.isArray(result.data)
+        ? result.data[0]
+        : result.data;
       
       return {
         success: true,
-        url: result.documents?.[0]?.fileUrl || result.sharePointUrl,
-        error: null
+        url: documentResult?.sharePointUrl || documentResult?.fileUrl || null,
+        sharePointFileId: documentResult?.sharePointFileId,
+        sharePointPath: documentResult?.sharePointPath,
+        documentId: documentResult?.id,
+        error: null,
       };
     } catch (error) {
       console.error('[ERROR] SharePoint upload error:', error);
       return {
         success: false,
         url: null,
+        sharePointFileId: undefined,
+        sharePointPath: undefined,
+        documentId: undefined,
         error: error instanceof Error ? error.message : 'Upload failed. Please try again.'
       };
     }
@@ -364,13 +376,21 @@ const DocumentsUploadStep = forwardRef<StepHandle, DocumentsUploadStepProps>((
         // Find saved files for this document type
         const savedFiles = groupedData[defaultDoc.name] || [];
         const files: DocumentFile[] = savedFiles.map((savedFile: any, index: number) => {
+          const uploadedAtIso =
+            savedFile.uploadedAt ||
+            savedFile.updatedAt ||
+            savedFile.createdAt ||
+            new Date().toISOString();
+
           return {
             id: `${defaultDoc.id}_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
             name: savedFile.fileName || savedFile.originalFileName || `Document_${index + 1}`,
             file: new File([], savedFile.fileName || 'document'),
             uploaded: true,
-            sharePointUrl: savedFile.fileUrl || savedFile.sharePointUrl,
-            uploadedAt: Date.now()
+            sharePointUrl: savedFile.sharePointUrl || savedFile.fileUrl,
+            sharePointFileId: savedFile.sharePointFileId,
+            documentId: savedFile.id,
+            uploadedAtIso,
           };
         });
 
@@ -426,14 +446,24 @@ const DocumentsUploadStep = forwardRef<StepHandle, DocumentsUploadStepProps>((
       // Update documents with saved data
       const updatedDocuments = initialDocuments.map(defaultDoc => {
         const savedFiles = groupedData[defaultDoc.name] || [];
-        const files: DocumentFile[] = savedFiles.map((savedFile: any, index: number) => ({
-          id: `${defaultDoc.id}_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
-          name: savedFile.fileName || savedFile.originalFileName || `Document_${index + 1}`,
-          file: new File([], savedFile.fileName || 'document'),
-          uploaded: true,
-          sharePointUrl: savedFile.fileUrl || savedFile.sharePointUrl,
-          uploadedAt: Date.now()
-        }));
+        const files: DocumentFile[] = savedFiles.map((savedFile: any, index: number) => {
+          const uploadedAtIso =
+            savedFile.uploadedAt ||
+            savedFile.updatedAt ||
+            savedFile.createdAt ||
+            new Date().toISOString();
+
+          return {
+            id: `${defaultDoc.id}_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
+            name: savedFile.fileName || savedFile.originalFileName || `Document_${index + 1}`,
+            file: new File([], savedFile.fileName || 'document'),
+            uploaded: true,
+            sharePointUrl: savedFile.sharePointUrl || savedFile.fileUrl,
+            sharePointFileId: savedFile.sharePointFileId,
+            documentId: savedFile.id,
+            uploadedAtIso,
+          };
+        });
 
         return {
           ...defaultDoc,
@@ -456,17 +486,23 @@ const DocumentsUploadStep = forwardRef<StepHandle, DocumentsUploadStepProps>((
   const documentsToSave = useMemo(() => {
     return documents
       .filter(doc => doc.files && doc.files.length > 0)
-      .flatMap(doc => 
-        doc.files.map(file => ({
-          documentType: doc.name,
-          fileName: file.name,
-          fileUrl: file.sharePointUrl || '',
-          isRequired: doc.type === 'required',
-          storageLocation: doc.storageLocation,
-          fileSize: file.file?.size || 0,
-          mimeType: file.file?.type || '',
-          description: doc.description
-        }))
+      .flatMap(doc =>
+        doc.files.map(file => {
+          const uploadedAtIso = file.uploadedAtIso || new Date().toISOString();
+          return {
+            documentId: file.documentId,
+            documentType: doc.name,
+            category: doc.category,
+            fileName: file.name,
+            fileUrl: file.sharePointUrl || '',
+            sharePointUrl: file.sharePointUrl,
+            sharePointFileId: file.sharePointFileId,
+            isRequired: doc.type === 'required',
+            fileSize: file.file?.size || 0,
+            mimeType: file.file?.type || '',
+            uploadedAt: uploadedAtIso,
+          };
+        })
       );
   }, [documents]);
 
@@ -551,13 +587,16 @@ const DocumentsUploadStep = forwardRef<StepHandle, DocumentsUploadStepProps>((
         setUploadStatus(prev => ({ ...prev, [documentId]: 'success' }));
         setUploadProgress(prev => ({ ...prev, [documentId]: 100 }));
         const fileId = `${documentId}_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+        const uploadedAtIso = new Date().toISOString();
         const newFile: DocumentFile = {
           id: fileId,
           name: file.name,
           file: file,
           uploaded: true,
           sharePointUrl: uploadResult.url || undefined,
-          uploadedAt: Date.now()
+          sharePointFileId: uploadResult.sharePointFileId,
+          documentId: uploadResult.documentId,
+          uploadedAtIso,
         };
 
         console.log('Creating new file object:', newFile);

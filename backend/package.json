@@ -13,11 +13,15 @@
     "db:reset": "tsx scripts/reset-db.ts",
     "electric:up": "docker compose -f electric-docker-compose.yml up -d",
     "electric:down": "docker compose -f electric-docker-compose.yml down",
-    "test": "vitest",
-    "test:integration": "tsx src/tests/runIntegrationTests.ts",
-    "test:graph": "vitest run src/tests/microsoftGraph.test.ts",
-    "test:sync": "vitest run src/tests/realTimeSync.test.ts",
-    "test:watch": "vitest watch"
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest run --coverage",
+    "test:integration": "vitest run src/test/integration.test.ts",
+    "test:services": "vitest run src/services/**/*.test.ts",
+    "test:routes": "vitest run src/routes/**/*.test.ts",
+    "test:utils": "vitest run src/utils/**/*.test.ts",
+    "test:all": "vitest run --coverage"
   },
   "dependencies": {
     "@azure/storage-blob": "^12.17.0",
