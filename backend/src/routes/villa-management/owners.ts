@@ -10,6 +10,7 @@ const router = Router();
 const createOwnerSchema = z.object({
   body: z.object({
     villaId: z.string().uuid(),
+    clerkUserId: z.string().optional(), // Optional clerk user ID for authentication
     firstName: z.string().min(1).max(50),
     lastName: z.string().min(1).max(50),
     email: z.string().email(),
@@ -33,6 +34,7 @@ const updateOwnerSchema = z.object({
     ownerId: z.string().uuid(),
   }),
   body: z.object({
+    clerkUserId: z.string().optional(), // Optional clerk user ID for authentication
     firstName: z.string().min(1).max(50).optional(),
     lastName: z.string().min(1).max(50).optional(),
     email: z.string().email().optional(),
@@ -151,6 +153,12 @@ router.get('/villa/:villaId', authenticate, async (req: Request, res: Response) 
 router.post('/', authenticate, validateRequest(createOwnerSchema), async (req: Request, res: Response) => {
   try {
     const ownerData = req.body;
+    const authenticatedUserId = (req as any).user?.id; // Get authenticated user ID from middleware
+
+    // Automatically set clerkUserId if not provided
+    if (!ownerData.clerkUserId && authenticatedUserId) {
+      ownerData.clerkUserId = authenticatedUserId;
+    }
 
     // Check if villa exists
     const villa = await prisma.villa.findUnique({

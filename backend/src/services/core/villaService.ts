@@ -85,20 +85,39 @@ class VillaService {
       try {
         const villaCode = await generateVillaCode();
         
-        // Create villa with proper initialization
+        // Create villa with minimal required data - use defaults for required fields
         const villa = await prisma.villa.create({
           data: {
             villaCode,
-            villaName: data.name || 'New Villa',
-            address: 'TBD', 
-            city: 'TBD',
-            country: 'Indonesia',
+            villaName: data.name || '',
+            // 🔧 FIXED: Use empty string for required fields that will be filled during onboarding
+            address: '',
+            city: '',
+            country: '',
+            zipCode: null,
+            // Use minimum default values for required numeric fields that will be filled during onboarding
             bedrooms: 1,
             bathrooms: 1,
-            maxGuests: 2,
+            maxGuests: 1,
+            propertySize: null,
+            plotSize: null,
+            latitude: null,
+            longitude: null,
+            yearBuilt: null,
+            renovationYear: null,
+            // Set reasonable defaults for required fields
             propertyType: 'VILLA',
             status: 'DRAFT',
-            description: 'Villa created during onboarding',
+            // Use NULL for optional text fields
+            description: null,
+            shortDescription: null,
+            villaStyle: null,
+            locationType: null,
+            googleMapsLink: null,
+            oldRatesCardLink: null,
+            iCalCalendarLink: null,
+            propertyEmail: null,
+            propertyWebsite: null,
             // Create onboarding progress directly
             onboarding: {
               create: {

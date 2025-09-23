@@ -133,6 +133,65 @@ const FIELD_DISPLAY_NAMES: Record<string, string> = {
   'companyInformation': 'Company Information Section'
 };
 
+// SkippedItemsDisplay component moved outside DashboardPage
+const SkippedItemsDisplay: React.FC<{ session: OnboardingProgressSummary }> = ({ session }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  const totalSkippedItems = session.stepsSkipped + session.fieldsSkipped;
+
+  if (totalSkippedItems === 0) {
+    return <span className="text-sm text-green-600 flex items-center gap-1">
+      <CheckCircle className="w-4 h-4" />
+      Complete
+    </span>;
+  }
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="flex items-center gap-2 hover:bg-amber-50 rounded-lg p-1 transition-colors"
+      >
+        <AlertTriangle className="w-4 h-4 text-amber-600" />
+        <span className="text-sm text-amber-600 font-medium">
+          {totalSkippedItems} item{totalSkippedItems > 1 ? 's' : ''}
+        </span>
+        <svg 
+          className={`w-3 h-3 text-amber-600 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+          fill="none" 
+          viewBox="0 0 24 24" 
+          stroke="currentColor"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      
+      {isExpanded && (
+        <div className="absolute left-0 top-full mt-2 z-10 bg-white border border-amber-200 rounded-lg shadow-lg p-4 w-80">
+          <div className="space-y-3">
+            <h4 className="font-medium text-amber-800 flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4" />
+              Skipped Items Details
+            </h4>
+            
+            <div className="text-sm text-slate-600">
+              <p>Steps skipped: {session.stepsSkipped}</p>
+              <p>Fields skipped: {session.fieldsSkipped}</p>
+              <p>Total fields: {session.totalFields}</p>
+            </div>
+            
+            <div className="pt-2 border-t border-amber-200">
+              <p className="text-xs text-slate-500">
+                These items can be completed later through the villa profile page.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState('overview');
   const [dashboardData, setDashboardData] = useState<ManagementDashboard | null>(null);
@@ -259,65 +318,6 @@ export default function DashboardPage() {
   // View villa details
   const handleViewDetails = (villaId: string) => {
     router.push(`/villa-management/${villaId}/profile`);
-  };
-
-  // SkippedItemsDisplay component
-  const SkippedItemsDisplay: React.FC<{ session: OnboardingProgressSummary }> = ({ session }) => {
-    const [isExpanded, setIsExpanded] = useState(false);
-    
-    const totalSkippedItems = session.stepsSkipped + session.fieldsSkipped;
-    
-    if (totalSkippedItems === 0) {
-      return <span className="text-sm text-green-600 flex items-center gap-1">
-        <CheckCircle className="w-4 h-4" />
-        Complete
-      </span>;
-    }
-
-    return (
-      <div className="relative">
-        <button
-          onClick={() => setIsExpanded(!isExpanded)}
-          className="flex items-center gap-2 hover:bg-amber-50 rounded-lg p-1 transition-colors"
-        >
-          <AlertTriangle className="w-4 h-4 text-amber-600" />
-          <span className="text-sm text-amber-600 font-medium">
-            {totalSkippedItems} item{totalSkippedItems > 1 ? 's' : ''}
-          </span>
-          <svg 
-            className={`w-3 h-3 text-amber-600 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-            fill="none" 
-            viewBox="0 0 24 24" 
-            stroke="currentColor"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
-        </button>
-        
-        {isExpanded && (
-          <div className="absolute left-0 top-full mt-2 z-10 bg-white border border-amber-200 rounded-lg shadow-lg p-4 w-80">
-            <div className="space-y-3">
-              <h4 className="font-medium text-amber-800 flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4" />
-                Skipped Items Details
-              </h4>
-              
-              <div className="text-sm text-slate-600">
-                <p>Steps skipped: {session.stepsSkipped}</p>
-                <p>Fields skipped: {session.fieldsSkipped}</p>
-                <p>Total fields: {session.totalFields}</p>
-              </div>
-              
-              <div className="pt-2 border-t border-amber-200">
-                <p className="text-xs text-slate-500">
-                  These items can be completed later through the villa profile page.
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    );
   };
 
   // Get status badge style

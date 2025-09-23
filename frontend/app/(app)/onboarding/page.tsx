@@ -2,10 +2,10 @@
 
 import { useSearchParams } from 'next/navigation';
 import { useUser } from '@clerk/nextjs';
-import { useEffect } from 'react';
+import { useEffect, Suspense } from 'react';
 import OnboardingWizardUnified from '@/components/onboarding/OnboardingWizardUnified';
 
-export default function OnboardingPage() {
+function OnboardingContent() {
   const { user } = useUser();
   const searchParams = useSearchParams();
   const newSession = searchParams.get('new') === 'true';
@@ -26,5 +26,13 @@ export default function OnboardingPage() {
 
   return (
     <OnboardingWizardUnified forceNewSession={newSession} />
+  );
+}
+
+export default function OnboardingPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <OnboardingContent />
+    </Suspense>
   );
 }

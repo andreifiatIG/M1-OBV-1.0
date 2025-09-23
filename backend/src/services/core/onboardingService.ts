@@ -310,13 +310,29 @@ class OnboardingService {
     try {
       // FIXED: Staff relation issue resolved - relations restored!
       logger.debug('[FIXED] Fixed version with restored relations called');
-      // First check if villa exists
+
+      // 🔧 FIXED: Add villa ownership validation to prevent unauthorized access
       const villa = await prisma.villa.findUnique({
-        where: { id: villaId }
+        where: { id: villaId },
+        include: {
+          owner: {
+            select: { id: true, clerkUserId: true }
+          }
+        }
       });
 
       if (!villa) {
         throw new Error(`Villa with ID ${villaId} not found. Please create the villa first.`);
+      }
+
+      // Validate villa ownership if userId is provided
+      if (userId && villa.owner && villa.owner.clerkUserId !== userId) {
+        logger.warn('[SECURITY] Unauthorized villa access attempt:', {
+          villaId,
+          requestingUserId: userId,
+          villaOwnerId: villa.owner.clerkUserId
+        });
+        throw new Error(`Access denied. You do not own villa ${villaId}.`);
       }
 
       // 🔍 STAFF DEBUG: First, let's check if staff records exist in database
@@ -520,7 +536,7 @@ class OnboardingService {
       }
 
       const stepVersions = (progress.villa?.stepProgress || []).reduce((acc, step) => {
-        acc[step.stepNumber] = step.version ?? 0;
+        acc[step.stepNumber] = step.version ?? 1;
         return acc;
       }, {} as Record<number, number>);
 
@@ -569,14 +585,28 @@ class OnboardingService {
    */
   async getOnboardingProgressSummary(villaId: string, userId?: string) {
     try {
-      // Ensure villa exists before attempting to read/create progress
-      const villaExists = await prisma.villa.findUnique({
+      // 🔧 FIXED: Add villa ownership validation to prevent unauthorized access
+      const villa = await prisma.villa.findUnique({
         where: { id: villaId },
-        select: { id: true },
+        include: {
+          owner: {
+            select: { id: true, clerkUserId: true }
+          }
+        }
       });
 
-      if (!villaExists) {
+      if (!villa) {
         throw new Error(`Villa with ID ${villaId} not found. Please create the villa first.`);
+      }
+
+      // Validate villa ownership if userId is provided
+      if (userId && villa.owner && villa.owner.clerkUserId !== userId) {
+        logger.warn('[SECURITY] Unauthorized villa access attempt in summary:', {
+          villaId,
+          requestingUserId: userId,
+          villaOwnerId: villa.owner.clerkUserId
+        });
+        throw new Error(`Access denied. You do not own villa ${villaId}.`);
       }
 
       const progressSelect = {
@@ -713,7 +743,7 @@ class OnboardingService {
       });
 
       const stepProgress = await this.ensureStepProgressRecord(villaId, typedStep);
-      const currentVersion = stepProgress?.version ?? 0;
+      const currentVersion = stepProgress?.version ?? 1;
 
       if (version !== undefined && version !== currentVersion) {
         throw new VersionConflictError(`Version mismatch for villa ${villaId}, step ${step}. Expected ${currentVersion}, received ${version}.`);
@@ -727,7 +757,11 @@ class OnboardingService {
 
       let normalizedData = data;
       if (!isSkipped) {
-        const schemaValidation = safeValidateStepPayload(typedStep, data, completed && !isAutoSave);
+        // 🔧 FIXED: Add server-side field normalization before validation
+        // This handles frontend field variations (villaAddress→address, etc.)
+        normalizedData = this.normalizeStepData(step, data);
+
+        const schemaValidation = safeValidateStepPayload(typedStep, normalizedData, completed && !isAutoSave);
         if (!schemaValidation.success) {
           throw new Error(`Step ${step} validation failed: ${schemaValidation.errors.join(', ')}`);
         }
@@ -803,7 +837,7 @@ class OnboardingService {
         clientTimestamp,
       });
 
-      const nextVersion = (currentVersion ?? 0) + 1;
+      const nextVersion = (currentVersion ?? 1) + 1;
       await prisma.onboardingStepProgress.update({
         where: {
           villaId_stepNumber: {
@@ -851,6 +885,7 @@ class OnboardingService {
         dependsOnSteps: [],
         estimatedDuration: null,
         actualDuration: null,
+        version: 1, // Start with version 1 to match frontend expectations
       },
     });
   }
@@ -2062,11 +2097,16 @@ class OnboardingService {
     switch (step) {
       case 1: // Villa Information
         if (!data.villaName) errors.push('Villa name is required');
-        // Require city and country combination
-        if (!(data.city && data.country)) {
+        // 🔧 FIXED: Handle both frontend and backend field names in validation
+        // Require city and country combination (accept both field name formats)
+        const city = data.city || data.villaCity;
+        const country = data.country || data.villaCountry;
+        const address = data.address || data.villaAddress;
+
+        if (!(city && country)) {
           errors.push('City and country are required');
         }
-        if (!data.address) errors.push('Address is required');
+        if (!address) errors.push('Address is required');
         if (!data.bedrooms || data.bedrooms < 1) errors.push('Number of bedrooms must be at least 1');
         if (!data.bathrooms || data.bathrooms < 1) errors.push('Number of bathrooms must be at least 1');
         if (!data.maxGuests || data.maxGuests < 1) errors.push('Maximum guests must be at least 1');
@@ -2733,6 +2773,74 @@ async rejectOnboarding(_villaId: string, _rejectedBy: string, _reason: string) {
         required: true,
       },
     ];
+  }
+
+  /**
+   * 🔧 FIXED: Server-side field normalization to handle frontend field variations
+   * Normalizes field names from frontend formats to backend expected formats
+   */
+  private normalizeStepData(step: number, data: any): any {
+    if (!data || typeof data !== 'object') {
+      return data;
+    }
+
+    const normalized = { ...data };
+
+    // Step 1: Villa Information field normalization
+    if (step === 1) {
+      // Handle address field variations
+      if (data.villaAddress && !data.address) {
+        normalized.address = data.villaAddress;
+        delete normalized.villaAddress;
+      }
+      if (data.villaCity && !data.city) {
+        normalized.city = data.villaCity;
+        delete normalized.villaCity;
+      }
+      if (data.villaCountry && !data.country) {
+        normalized.country = data.villaCountry;
+        delete normalized.villaCountry;
+      }
+      if (data.villaPostalCode && !data.zipCode) {
+        normalized.zipCode = data.villaPostalCode;
+        delete normalized.villaPostalCode;
+      }
+      // Handle size field variations
+      if (data.villaArea && !data.propertySize) {
+        normalized.propertySize = data.villaArea;
+        delete normalized.villaArea;
+      }
+      if (data.landArea && !data.plotSize) {
+        normalized.plotSize = data.landArea;
+        delete normalized.landArea;
+      }
+    }
+
+    // Convert string numbers to actual numbers for validation
+    const numericFields = ['bedrooms', 'bathrooms', 'maxGuests', 'propertySize', 'plotSize', 'yearBuilt', 'renovationYear'];
+    numericFields.forEach(field => {
+      if (normalized[field] && typeof normalized[field] === 'string') {
+        const num = parseFloat(normalized[field]);
+        if (!isNaN(num)) {
+          normalized[field] = num;
+        }
+      }
+    });
+
+    // Remove empty strings and convert to null for database
+    Object.keys(normalized).forEach(key => {
+      if (normalized[key] === '' || normalized[key] === 'undefined' || normalized[key] === 'null') {
+        normalized[key] = null;
+      }
+    });
+
+    logger.debug(`[Field Normalization] Step ${step} field normalization:`, {
+      original: Object.keys(data),
+      normalized: Object.keys(normalized),
+      changes: Object.keys(data).filter(key => !Object.keys(normalized).includes(key))
+    });
+
+    return normalized;
   }
 
 }

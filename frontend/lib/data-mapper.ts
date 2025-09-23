@@ -6,6 +6,15 @@ import {
   type OnboardingStep,
   type StepDTOMap,
 } from "@contract/onboardingContract";
+import {
+  mapVillaFrontendToBackend,
+  mapVillaBackendToFrontend,
+  mapOwnerFrontendToBackend,
+  mapOwnerBackendToFrontend,
+  debugFieldMapping,
+  type FrontendVillaFields,
+  type BackendVillaFields,
+} from "./fieldMappings";
 
 
 const DEBUG_LOG_ENABLED =
@@ -73,6 +82,7 @@ interface VillaFrontendData {
   propertyEmail?: string;
   propertyWebsite?: string;
   status?: string;
+  [key: string]: unknown; // Add index signature for compatibility
 }
 
 interface OwnerFrontendData {
@@ -105,6 +115,7 @@ interface OwnerFrontendData {
   preferredLanguage?: string;
   communicationPreference?: string;
   notes?: string;
+  [key: string]: unknown; // Add index signature for compatibility
 }
 
 interface ContractualDetailsFrontendData {
@@ -289,6 +300,10 @@ interface DocumentData {
   sharePointPath?: string;
   url?: string;
   uploadedAt?: string;
+  uploadedAtIso?: string; // Add missing property
+  createdAt?: string; // Add missing property
+  updatedAt?: string; // Add missing property
+  fileType?: string; // Add missing property
   uploaded?: boolean;
   isRequired?: boolean;
   isActive?: boolean;
@@ -344,6 +359,7 @@ interface BackendVillaData {
   description?: string;
   shortDescription?: string;
   status?: string;
+  [key: string]: unknown; // Add index signature for compatibility
 }
 
 interface BackendOwnerData {
@@ -758,167 +774,144 @@ function mapPhotoCategoryToFrontend(backendCategory: string): string {
 
 /**
  * Map frontend villa data to backend schema
+ * 🔧 FIXED: Using unified field mapping system + handling field variations
  */
 export function mapVillaDataToBackend(frontendData: VillaFrontendData) {
-  // Helper to include a trimmed string only when non-empty
-  const strOrUndef = (v: unknown) => {
-    if (v === undefined || v === null) return undefined;
-    if (typeof v === "object") return undefined;
-    if (
-      typeof v === "string" ||
-      typeof v === "number" ||
-      typeof v === "boolean"
-    ) {
-      const s = String(v).trim();
-      return s.length > 0 ? s : undefined;
-    }
-    return undefined;
-  };
-  // Helper to include a positive integer only when > 0
-  const intGt0 = (v: string | number | undefined) => {
-    if (v === undefined || v === null) return undefined;
-    const n = parseInt(String(v), 10);
-    return Number.isFinite(n) && n > 0 ? n : undefined;
-  };
-  // Helper to include a positive float only when > 0
-  const floatGt0 = (v: string | number | undefined) => {
-    if (v === undefined || v === null) return undefined;
-    const n = parseFloat(String(v));
-    return Number.isFinite(n) && n > 0 ? n : undefined;
-  };
-  // Coordinates helper
-  const parsed = parseLatLngFromCoordinates(
-    frontendData.googleCoordinates || ""
-  );
-  const latCandidate = frontendData.latitude ?? parsed?.lat;
-  const lngCandidate = frontendData.longitude ?? parsed?.lng;
-  const lat = Number.isFinite(Number(latCandidate))
-    ? Number(latCandidate)
-    : undefined;
-  const lng = Number.isFinite(Number(lngCandidate))
-    ? Number(lngCandidate)
-    : undefined;
+  if (!frontendData) {
+    debugWarn('[Data Mapper] No villa data provided');
+    return {};
+  }
 
-  const raw = {
-    // Villa Information
-    villaName: strOrUndef(frontendData.villaName),
-    villaCode:
-      frontendData.villaCode || generateVillaCode(frontendData.villaName || ""),
-    location: strOrUndef(frontendData.location || frontendData.locationType),
-    locationType: strOrUndef(frontendData.locationType || frontendData.location),
-    address: strOrUndef(frontendData.villaAddress || frontendData.address),
-    city: strOrUndef(frontendData.villaCity || frontendData.city),
-    country: strOrUndef(frontendData.villaCountry || frontendData.country),
-    zipCode: strOrUndef(frontendData.villaPostalCode || frontendData.zipCode),
-    bedrooms: intGt0(frontendData.bedrooms),
-    bathrooms: intGt0(frontendData.bathrooms),
-    maxGuests: intGt0(frontendData.maxGuests),
-    propertySize: floatGt0(frontendData.villaArea),
-    plotSize: floatGt0(frontendData.landArea),
+  // 🔧 FIXED: Normalize field variations before mapping
+  // Handle cases where data might use either frontend or backend field names
+  const normalizedData = { ...frontendData };
+
+  // Handle address field variations
+  if (frontendData.address && !frontendData.villaAddress) {
+    normalizedData.villaAddress = frontendData.address;
+  }
+  if (frontendData.city && !frontendData.villaCity) {
+    normalizedData.villaCity = frontendData.city;
+  }
+  if (frontendData.country && !frontendData.villaCountry) {
+    normalizedData.villaCountry = frontendData.country;
+  }
+  if (frontendData.zipCode && !frontendData.villaPostalCode) {
+    normalizedData.villaPostalCode = frontendData.zipCode;
+  }
+  if (frontendData.propertySize && !frontendData.villaArea) {
+    normalizedData.villaArea = frontendData.propertySize;
+  }
+  if (frontendData.plotSize && !frontendData.landArea) {
+    normalizedData.landArea = frontendData.plotSize;
+  }
+
+  // Use our unified field mapping system for basic transformations
+  const mappedData = mapVillaFrontendToBackend(normalizedData as FrontendVillaFields);
+
+  // Handle special cases that require additional processing
+  const specialFields = {
+    // Villa code generation if missing
+    villaCode: frontendData.villaCode || generateVillaCode(frontendData.villaName || ""),
+
+    // Coordinate parsing from googleCoordinates if individual lat/lng not provided
+    ...(() => {
+      const parsed = parseLatLngFromCoordinates(frontendData.googleCoordinates || "");
+      const lat = mappedData.latitude ?? parsed?.lat;
+      const lng = mappedData.longitude ?? parsed?.lng;
+
+      return {
+        latitude: Number.isFinite(Number(lat)) ? Number(lat) : undefined,
+        longitude: Number.isFinite(Number(lng)) ? Number(lng) : undefined,
+      };
+    })(),
+
     // Ensure enum casing aligns with backend expectations
     propertyType: frontendData.propertyType
       ? String(frontendData.propertyType).toUpperCase()
       : undefined,
-    yearBuilt: Number.isFinite(parseInt(String(frontendData.yearBuilt), 10))
-      ? parseInt(String(frontendData.yearBuilt), 10)
+    villaStyle: frontendData.villaStyle
+      ? String(frontendData.villaStyle).toUpperCase()
       : undefined,
-    renovationYear: Number.isFinite(
-      parseInt(String(frontendData.renovationYear), 10)
-    )
-      ? parseInt(String(frontendData.renovationYear), 10)
-      : undefined,
-    villaStyle: strOrUndef(
-      frontendData.villaStyle
-        ? String(frontendData.villaStyle).toUpperCase()
-        : ""
-    ),
-    description: strOrUndef(frontendData.description),
-    shortDescription: strOrUndef(frontendData.shortDescription),
-
-    // Google Maps Integration
-    latitude: lat,
-    longitude: lng,
-
-    // External Links - include only if non-empty
-    googleMapsLink: strOrUndef(frontendData.googleMapsLink),
-    oldRatesCardLink: strOrUndef(frontendData.oldRatesCardLink),
-    iCalCalendarLink: strOrUndef(frontendData.iCalCalendarLink),
-
-    // Property Contact Information
-    propertyEmail: strOrUndef(frontendData.propertyEmail),
-    propertyWebsite: strOrUndef(frontendData.propertyWebsite),
-
-    // Additional fields
-    status: frontendData.status || "DRAFT",
   };
-  return finalizeStepPayload(1, raw);
+
+  // Merge mapped data with special fields, filter out undefined values
+  const finalData = Object.fromEntries(
+    Object.entries({ ...mappedData, ...specialFields })
+      .filter(([, value]) => value !== undefined && value !== null && value !== '')
+  );
+
+  // Debug field mapping in development
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`[Data Mapper] Frontend→Backend transformation:`, {
+      input: frontendData,
+      normalized: normalizedData,
+      mapped: mappedData,
+      final: finalData
+    });
+  }
+
+  debugFieldMapping(frontendData, finalData, "Villa Data Frontend → Backend");
+
+  return finalData;
 }
 
 /**
  * Map backend villa data to frontend schema
  */
 export function mapVillaDataToFrontend(backendData: BackendVillaData) {
-  // Debug logging only in development with debug flag
-  if (
-    process.env.NODE_ENV === "development" &&
-    process.env.NEXT_PUBLIC_DEBUG === "true"
-  ) {
-    debugLog("Villa data mapping - input:", backendData);
-  }
+  // 🔧 FIXED: Using unified field mapping system for consistent transformations
+  // This eliminates the manual field mapping and potential inconsistencies
+
+  // Use our unified field mapping system for basic transformations
+  const mappedData = mapVillaBackendToFrontend(backendData as BackendVillaFields);
+
+  // Handle special cases that require additional processing
   const result = {
-    // Villa Information
-    villaName: backendData.villaName,
-    villaCode: backendData.villaCode,
-    villaAddress: backendData.address,
-    villaCity: backendData.city,
-    villaCountry: backendData.country, // Fixed: was 'country', should be 'villaCountry'
-    villaPostalCode: backendData.zipCode,
+    ...mappedData,
+
+    // String conversions for numeric fields (UI expects strings)
     bedrooms: backendData.bedrooms?.toString() || "",
     bathrooms: backendData.bathrooms?.toString() || "",
     maxGuests: backendData.maxGuests?.toString() || "",
+    villaArea: backendData.propertySize?.toString() || "",
+    landArea: backendData.plotSize?.toString() || "",
+    yearBuilt: backendData.yearBuilt?.toString() || "",
+    renovationYear: backendData.renovationYear?.toString() || "",
+    latitude: backendData.latitude?.toString() || "",
+    longitude: backendData.longitude?.toString() || "",
+
+    // Enum case conversion (backend uses uppercase, frontend prefers lowercase)
     propertyType: backendData.propertyType
       ? backendData.propertyType.toLowerCase()
       : "",
-    villaArea: backendData.propertySize?.toString() || "",
-    landArea: backendData.plotSize?.toString() || "",
-    locationType: backendData.location,
-
-    // Villa Details - NEW FIELDS
-    yearBuilt: backendData.yearBuilt?.toString() || "",
-    renovationYear: backendData.renovationYear?.toString() || "",
     villaStyle: backendData.villaStyle
       ? backendData.villaStyle.toLowerCase()
       : "",
 
-    // Google Maps - FIXED COORDINATES MAPPING
-    latitude: backendData.latitude?.toString() || "",
-    longitude: backendData.longitude?.toString() || "",
+    // Generate combined coordinates for Google Maps display
     googleCoordinates:
       backendData.latitude && backendData.longitude
         ? `${backendData.latitude}, ${backendData.longitude}`
         : "",
 
-    // External Links - NEWLY ADDED FIELDS
+    // Backward compatibility for location fields
+    location: backendData.locationType,
+    locationType: backendData.locationType,
+
+    // Ensure strings for optional fields
+    description: backendData.description || "",
+    shortDescription: backendData.shortDescription || "",
     googleMapsLink: backendData.googleMapsLink || "",
     oldRatesCardLink: backendData.oldRatesCardLink || "",
     iCalCalendarLink: backendData.iCalCalendarLink || "",
-
-    // Property Contact Information
     propertyEmail: backendData.propertyEmail || "",
     propertyWebsite: backendData.propertyWebsite || "",
-
-    // Additional fields
-    description: backendData.description || "",
-    shortDescription: backendData.shortDescription || "",
-    status: backendData.status,
   };
-  // Debug logging only in development with debug flag
-  if (
-    process.env.NODE_ENV === "development" &&
-    process.env.NEXT_PUBLIC_DEBUG === "true"
-  ) {
-    debugLog("Villa data mapping - output:", result);
-  }
+
+  // Add debug logging in development
+  debugFieldMapping(backendData, result, "Villa Data Backend → Frontend");
+
   return result;
 }
 
@@ -926,50 +919,33 @@ export function mapVillaDataToFrontend(backendData: BackendVillaData) {
  * Map frontend owner data to backend schema
  */
 export function mapOwnerDataToBackend(frontendData: OwnerFrontendData) {
-  // Handle name fields - now using separate firstName/lastName
-  const firstName = frontendData.firstName || "";
-  const lastName = frontendData.lastName || "";
+  // 🔧 FIXED: Using unified field mapping system for owner data
 
+  // Use our unified field mapping system for basic transformations
+  const mappedData = mapOwnerFrontendToBackend(frontendData);
+
+  // Handle special cases and additional fields
   const raw = {
-    // Owner Type - Updated field mapping
+    ...mappedData,
+
+    // Default values and special handling
     ownerType: frontendData.ownerType || "INDIVIDUAL",
+    firstName: frontendData.firstName || "",
+    lastName: frontendData.lastName || "",
 
-    // Personal Information - Updated field mappings
-    firstName,
-    lastName,
-    email: frontendData.email,
-    phone: frontendData.phone,
-    phoneCountryCode: frontendData.phoneCountryCode,
-    phoneDialCode: frontendData.phoneDialCode,
-    alternativePhone: frontendData.alternativePhone,
-    alternativePhoneCountryCode: frontendData.alternativePhoneCountryCode,
-    alternativePhoneDialCode: frontendData.alternativePhoneDialCode,
-    nationality: frontendData.nationality,
-    passportNumber: frontendData.passportNumber,
-    idNumber: frontendData.idNumber,
-    address: frontendData.address,
-    city: frontendData.city,
-    country: frontendData.country,
-    zipCode: frontendData.zipCode,
-
-    // Company Information - Updated field mappings
-    companyName: frontendData.companyName,
-    companyAddress: frontendData.companyAddress,
-    companyTaxId: frontendData.companyTaxId,
-    companyVat: frontendData.companyVat,
-
-    // Manager Information - Updated field mappings
-    managerName: frontendData.managerName,
-    managerEmail: frontendData.managerEmail,
-    managerPhone: frontendData.managerPhone,
-    managerPhoneCountryCode: frontendData.managerPhoneCountryCode,
-    managerPhoneDialCode: frontendData.managerPhoneDialCode,
-
-    // Additional Info
+    // Additional fields not in basic mapping
     preferredLanguage: frontendData.preferredLanguage || "en",
     communicationPreference: frontendData.communicationPreference || "EMAIL",
     notes: frontendData.notes,
+
+    // Manager phone fields (extended from basic mapping)
+    managerPhoneCountryCode: frontendData.managerPhoneCountryCode,
+    managerPhoneDialCode: frontendData.managerPhoneDialCode,
   };
+
+  // Add debug logging in development
+  debugFieldMapping(frontendData, raw, "Owner Data Frontend → Backend");
+
   return finalizeStepPayload(2, raw);
 }
 

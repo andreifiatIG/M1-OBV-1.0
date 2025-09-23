@@ -86,6 +86,21 @@ class OnboardingBackupService {
     currentStep: number,
     stepData: Record<number, unknown>
   ): Promise<void> {
+    // Always save to localStorage immediately for instant persistence
+    if (this.options.enableLocalStorage) {
+      const backupData: BackupData = {
+        sessionId: this.sessionId,
+        villaId,
+        currentStep,
+        stepData,
+        lastSaved: new Date().toISOString(),
+        userAgent: typeof window !== 'undefined' ? navigator.userAgent : 'Unknown',
+        version: '1.0',
+      };
+      await this.saveToLocalStorage(backupData);
+    }
+
+    // Debounce server backup
     if (this.saveTimeout) {
       clearTimeout(this.saveTimeout);
     }
@@ -254,24 +269,85 @@ class OnboardingBackupService {
   private recoverFromLocalStorage(villaId?: string): BackupData | null {
     try {
       if (typeof window === 'undefined') return null;
-      
-      const key = villaId 
-        ? `onboarding_backup_${villaId}`
-        : 'onboarding_latest_backup';
-        
-      const data = localStorage.getItem(key);
-      if (!data) return null;
 
-      const backupData = JSON.parse(data) as BackupData;
-      
-      // Validate data structure
-      if (!backupData.sessionId || !backupData.stepData) {
+      let data: BackupData | null = null;
+
+      if (villaId) {
+        // Try to recover specific villa backup
+        const villaKey = `onboarding_backup_${villaId}`;
+        const villaStored = localStorage.getItem(villaKey);
+        if (villaStored) {
+          try {
+            data = JSON.parse(villaStored) as BackupData;
+          } catch (parseError) {
+            console.warn('Failed to parse villa-specific backup:', parseError);
+          }
+        }
+      }
+
+      // If no villa-specific backup found, try latest backup
+      if (!data) {
+        const latestStored = localStorage.getItem('onboarding_latest_backup');
+        if (latestStored) {
+          try {
+            data = JSON.parse(latestStored) as BackupData;
+          } catch (parseError) {
+            console.warn('Failed to parse latest backup:', parseError);
+          }
+        }
+      }
+
+      // If still no data, try to find any onboarding backup
+      if (!data) {
+        const allKeys = Object.keys(localStorage);
+        const backupKeys = allKeys.filter(key => key.startsWith('onboarding_backup_'));
+
+        for (const key of backupKeys) {
+          try {
+            const stored = localStorage.getItem(key);
+            if (stored) {
+              const potentialData = JSON.parse(stored) as BackupData;
+              if (potentialData.sessionId && potentialData.stepData) {
+                data = potentialData;
+                break;
+              }
+            }
+          } catch (parseError) {
+            console.warn(`Failed to parse backup from key ${key}:`, parseError);
+          }
+        }
+      }
+
+      if (!data) {
         return null;
       }
 
-      return backupData;
+      // Validate the backup data
+      if (!data.sessionId || !data.stepData) {
+        console.warn('Invalid backup data found');
+        return null;
+      }
+
+      // Check if backup is recent (within 24 hours)
+      const backupAge = Date.now() - new Date(data.lastSaved).getTime();
+      const maxAge = 24 * 60 * 60 * 1000; // 24 hours
+
+      if (backupAge > maxAge) {
+        console.warn('Backup data is too old, skipping recovery');
+        return null;
+      }
+
+      console.log('✅ Recovered backup data:', {
+        villaId: data.villaId,
+        currentStep: data.currentStep,
+        stepCount: Object.keys(data.stepData).length,
+        lastSaved: data.lastSaved,
+        age: Math.round(backupAge / 1000 / 60) + ' minutes ago'
+      });
+
+      return data;
     } catch (error) {
-      console.warn('LocalStorage recovery failed:', error);
+      console.error('LocalStorage recovery failed:', error);
       return null;
     }
   }

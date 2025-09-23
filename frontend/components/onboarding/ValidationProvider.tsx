@@ -3,6 +3,13 @@
 import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { validateStepData } from './stepConfig';
+// Temporarily disable shared validation to fix build
+// import {
+//   validateStep as validateStepWithSharedSchema,
+//   validateField as validateFieldWithSharedSchema,
+//   isStepComplete,
+//   getRequiredFields
+// } from '@/lib/validation/shared-validation';
 
 interface FieldError {
   message: string;
@@ -54,14 +61,14 @@ export const ValidationProvider: React.FC<ValidationProviderProps> = ({
   const validationTimeouts = useRef<Record<string, NodeJS.Timeout>>({});
 
   const validateField = useCallback(async (
-    stepNumber: number, 
-    fieldName: string, 
+    stepNumber: number,
+    fieldName: string,
     value: any
   ): Promise<FieldError | null> => {
     if (!enableRealTimeValidation) return null;
 
     const fieldKey = `${stepNumber}-${fieldName}`;
-    
+
     // Clear existing timeout
     if (validationTimeouts.current[fieldKey]) {
       clearTimeout(validationTimeouts.current[fieldKey]);
@@ -73,31 +80,32 @@ export const ValidationProvider: React.FC<ValidationProviderProps> = ({
     return new Promise((resolve) => {
       validationTimeouts.current[fieldKey] = setTimeout(async () => {
         try {
-          // Create validation data with current field value
+          // Temporarily use legacy validation only until shared validation is fixed
           const validationData = { [fieldName]: value };
-          
-          // Use the existing step validation system
           const stepValidation = validateStepData(stepNumber, validationData);
-          const fieldError = stepValidation.errors[fieldName];
-          const fieldWarning = stepValidation.warnings[fieldName];
+          const legacyFieldError = stepValidation.errors[fieldName];
 
-          if (fieldError) {
-            const error: FieldError = {
-              message: fieldError,
-              code: 'VALIDATION_ERROR',
+          let fieldError: FieldError | null = null;
+
+          if (legacyFieldError) {
+            fieldError = {
+              message: legacyFieldError,
+              code: 'LEGACY_VALIDATION_ERROR',
               timestamp: Date.now(),
             };
+          }
 
+          if (fieldError) {
             // Update errors state
             setErrors(prev => ({
               ...prev,
               [stepNumber]: {
                 ...prev[stepNumber],
-                [fieldName]: error,
+                [fieldName]: fieldError,
               },
             }));
 
-            resolve(error);
+            resolve(fieldError);
           } else {
             // Clear field error if validation passes
             setErrors(prev => {
@@ -109,22 +117,8 @@ export const ValidationProvider: React.FC<ValidationProviderProps> = ({
               };
             });
 
-            // Handle warnings
-            if (fieldWarning) {
-              const warning: FieldError = {
-                message: fieldWarning,
-                code: 'VALIDATION_WARNING',
-                timestamp: Date.now(),
-              };
-
-              setWarnings(prev => ({
-                ...prev,
-                [stepNumber]: {
-                  ...prev[stepNumber],
-                  [fieldName]: warning,
-                },
-              }));
-            } else {
+            // Clear warnings if validation passes
+            {
               // Clear field warning
               setWarnings(prev => {
                 const stepWarnings = { ...prev[stepNumber] };
@@ -167,21 +161,23 @@ export const ValidationProvider: React.FC<ValidationProviderProps> = ({
     setIsValidating(prev => ({ ...prev, [`step-${stepNumber}`]: true }));
 
     try {
-      const stepValidation = validateStepData(stepNumber, data);
-      
+      // Temporarily use legacy validation only until shared validation is fixed
+      const legacyValidation = validateStepData(stepNumber, data);
+
       const errors: Record<string, FieldError> = {};
       const warnings: Record<string, FieldError> = {};
 
       // Convert validation results to FieldError format
-      Object.entries(stepValidation.errors).forEach(([field, message]) => {
+      Object.entries(legacyValidation.errors).forEach(([field, message]) => {
         errors[field] = {
           message,
-          code: 'VALIDATION_ERROR',
+          code: 'LEGACY_VALIDATION_ERROR',
           timestamp: Date.now(),
         };
       });
 
-      Object.entries(stepValidation.warnings).forEach(([field, message]) => {
+      // Add warnings from legacy system
+      Object.entries(legacyValidation.warnings).forEach(([field, message]) => {
         warnings[field] = {
           message,
           code: 'VALIDATION_WARNING',
@@ -200,14 +196,16 @@ export const ValidationProvider: React.FC<ValidationProviderProps> = ({
         [stepNumber]: warnings,
       }));
 
+      const isValid = Object.keys(errors).length === 0;
+
       // Show toast for step validation results
-      if (!stepValidation.isValid) {
+      if (!isValid) {
         const errorCount = Object.keys(errors).length;
         toast.error(`${errorCount} validation error${errorCount !== 1 ? 's' : ''} found in current step`);
       }
 
       return {
-        isValid: stepValidation.isValid,
+        isValid,
         errors,
         warnings,
       };

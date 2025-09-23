@@ -6,13 +6,14 @@ import React, {
   useRef,
   useCallback,
   useMemo,
+  Suspense,
+  lazy,
   type Dispatch,
   type SetStateAction,
 } from "react";
 import { useUser, useAuth } from "@clerk/nextjs";
 import { ClientApiClient, type ApiResponse } from "@/lib/api-client";
 import {
-  mapOnboardingDataToBackend,
   mapBackendProgressToStepData,
   type StepDataUnion,
 } from "@/lib/data-mapper";
@@ -35,18 +36,55 @@ import OnboardingBackupService, {
 import RecoveryModal from "./RecoveryModal";
 import ValidationProvider, { useValidation } from "./ValidationProvider";
 import ValidationSummary from "./ValidationSummary";
+import { AutoSaveQueue, DEFAULT_AUTOSAVE_CONFIG, type SaveOperation, type SaveResult } from "@/lib/autosaveQueue";
 
-// Direct imports to avoid chunk loading issues
-import VillaInformationStepEnhanced from "./steps/VillaInformationStepEnhanced";
-import OwnerDetailsStep from "./steps/OwnerDetailsStep";
-import ContractualDetailsStep from "./steps/ContractualDetailsStep";
-import BankDetailsStep from "./steps/BankDetailsStep";
-import OTACredentialsStep from "./steps/OTACredentialsStep";
-import DocumentsUploadStep from "./steps/DocumentsUploadStep";
-import StaffConfiguratorStep from "./steps/StaffConfiguratorStep";
-import FacilitiesChecklistStep from "./steps/FacilitiesChecklistStep";
-import PhotoUploadStep from "./steps/PhotoUploadStep";
-import ReviewSubmitStepEnhanced from "./steps/ReviewSubmitStepEnhanced";
+// 🔧 FIXED: Lazy loading with code splitting for better performance
+// This reduces initial bundle size and loads steps on demand
+
+// Lazy-loaded step components for code splitting
+const VillaInformationStepEnhanced = lazy(() => import("./steps/VillaInformationStepEnhanced"));
+const OwnerDetailsStep = lazy(() => import("./steps/OwnerDetailsStep"));
+const ContractualDetailsStep = lazy(() => import("./steps/ContractualDetailsStep"));
+const BankDetailsStep = lazy(() => import("./steps/BankDetailsStep"));
+const OTACredentialsStep = lazy(() => import("./steps/OTACredentialsStep"));
+const DocumentsUploadStep = lazy(() => import("./steps/DocumentsUploadStep"));
+const StaffConfiguratorStep = lazy(() => import("./steps/StaffConfiguratorStep"));
+const FacilitiesChecklistStep = lazy(() => import("./steps/FacilitiesChecklistStep"));
+const PhotoUploadStep = lazy(() => import("./steps/PhotoUploadStep"));
+const ReviewSubmitStepEnhanced = lazy(() => import("./steps/ReviewSubmitStepEnhanced"));
+
+// 🔧 FIXED: Step loading component for better UX during code splitting
+const StepLoadingFallback = ({ stepNumber }: { stepNumber: number }) => (
+  <div className="flex flex-col items-center justify-center py-12 space-y-4">
+    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+    <p className="text-sm text-gray-600">Loading Step {stepNumber}...</p>
+  </div>
+);
+
+// 🔧 FIXED: Preloading utility for better performance
+const preloadNextStep = (currentStep: number) => {
+  const nextStep = currentStep + 1;
+  if (nextStep <= 10) {
+    // Preload the next step component to improve perceived performance
+    const stepComponents = [
+      () => import("./steps/VillaInformationStepEnhanced"),
+      () => import("./steps/OwnerDetailsStep"),
+      () => import("./steps/ContractualDetailsStep"),
+      () => import("./steps/BankDetailsStep"),
+      () => import("./steps/OTACredentialsStep"),
+      () => import("./steps/DocumentsUploadStep"),
+      () => import("./steps/StaffConfiguratorStep"),
+      () => import("./steps/FacilitiesChecklistStep"),
+      () => import("./steps/PhotoUploadStep"),
+      () => import("./steps/ReviewSubmitStepEnhanced"),
+    ];
+
+    // Preload next step asynchronously
+    stepComponents[nextStep - 1]?.().catch(() => {
+      // Silently handle preload failures - not critical
+    });
+  }
+};
 
 // Enhanced auto-save configuration
 const AUTO_SAVE_CONFIG = {
@@ -550,12 +588,11 @@ const saveStepBatchEntry = async ({
   };
 
   try {
-    const backendData = mapOnboardingDataToBackend(numericStep, stepData);
     logger.log(numericStep, "AUTOSAVE_REQUEST", operationMeta);
     const response = await authenticatedApi.autoSaveOnboardingStep(
       villaId,
       numericStep,
-      backendData,
+      stepData,
       currentVersion,
       operationMeta
     );
@@ -816,35 +853,68 @@ const startNewOnboardingSession = async ({
     existingData?: StepDataMap
   ) => Promise<StepDataMap>;
 }) => {
-  const startResponse = await authenticatedApi.startOnboarding("My Villa");
+  // Start onboarding with a default villa name
+  const startResponse = await authenticatedApi.startOnboarding("New Villa");
   if (!startResponse.success || !startResponse.data?.villaId) {
-    throw new Error("Failed to start new onboarding session");
+    throw new Error(`Failed to start new onboarding session: ${startResponse.error || 'Unknown error'}`);
   }
 
   const newVillaId = startResponse.data.villaId;
+
+  // Log successful villa creation
+  console.log('✅ New villa created:', {
+    villaId: newVillaId,
+    villaCode: startResponse.data.villaCode || 'Unknown',
+    userId,
+  });
+
+  // Immediately store the villa ID to prevent loss
+  storeVillaId(newVillaId, userId);
+
+  // Update state if component is still mounted
   if (isMountedRef.current) {
     setVillaId(newVillaId);
     setCurrentStep(1);
-  }
+    clearAllStepErrors();
 
-  storeVillaId(newVillaId, userId);
-  const progress = await loadProgressForVilla({
-    authenticatedApi,
-    villaId: newVillaId,
-    isMountedRef,
-    setOnboardingProgress,
-    setLocalStepData,
-    setLastSavedData,
-    clearAllStepErrors,
-    stepVersionsRef,
-    setStepVersions,
-    loadFieldProgress,
-    enhanceWithFieldProgress: false,
-  });
-
-  if (!progress && isMountedRef.current) {
+    // Initialize with empty step data to prevent stale data
     setLocalStepData({});
     setLastSavedData({});
+    setOnboardingProgress(null);
+    stepVersionsRef.current = {};
+    setStepVersions({});
+  }
+
+  try {
+    // Load the progress for the new villa (should be minimal/empty)
+    const progress = await loadProgressForVilla({
+      authenticatedApi,
+      villaId: newVillaId,
+      isMountedRef,
+      setOnboardingProgress,
+      setLocalStepData,
+      setLastSavedData,
+      clearAllStepErrors,
+      stepVersionsRef,
+      setStepVersions,
+      loadFieldProgress,
+      enhanceWithFieldProgress: false, // Don't load field progress for new sessions
+    });
+
+    console.log('✅ New session initialized:', {
+      villaId: newVillaId,
+      hasProgress: !!progress,
+      currentStep: 1,
+    });
+
+  } catch (error) {
+    console.warn('⚠️ Failed to load progress for new villa, continuing with empty state:', error);
+    // Continue with empty state - this is acceptable for new sessions
+    if (isMountedRef.current) {
+      setLocalStepData({});
+      setLastSavedData({});
+      setOnboardingProgress(null);
+    }
   }
 };
 
@@ -956,6 +1026,9 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
     }
     return false;
   });
+
+  // 🔧 FIXED: Loading timeout safety mechanism to prevent infinite loading
+  const [loadingTimeoutReached, setLoadingTimeoutReached] = useState(false);
   const [autoSaveEnabled] = useState(AUTO_SAVE_CONFIG.enabled);
   const [lastSavedData, setLastSavedData] = useState<StepDataMap>({});
   const [isSaving, setIsSaving] = useState(false);
@@ -980,15 +1053,21 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
   const [isHydrated, setIsHydrated] = useState(false);
 
   const stepRefs = useRef<Array<StepHandle | null>>([]);
+
+  // 🔧 FIXED: Replace old queue management with enhanced AutoSaveQueue system
+  // This eliminates race conditions and data loss issues
+  const autoSaveQueue = useRef<AutoSaveQueue>(new AutoSaveQueue(DEFAULT_AUTOSAVE_CONFIG));
   const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const saveQueueRef = useRef<Set<number>>(new Set());
   const lastSaveTimeRef = useRef<number>(0);
-  const batchedSavesRef = useRef<Map<number, Record<string, unknown>>>(new Map());
   const validationBlockedStepsRef = useRef<Set<number>>(new Set());
-  const saveInProgressRef = useRef<boolean>(false); // Prevent concurrent saves
-  const saveOperationIdRef = useRef<number>(0); // Track save operations
   const awaitingVillaFlushRef = useRef<boolean>(false);
   const authenticatedApiRef = useRef<ClientApiClient | null>(null);
+
+  // Temporary refs during migration (will be removed after AutoSaveQueue integration is complete)
+  const saveInProgressRef = useRef<boolean>(false);
+  const saveOperationIdRef = useRef<number>(0);
+  const batchedSavesRef = useRef<Map<number, Record<string, unknown>>>(new Map());
+  const saveQueueRef = useRef<Set<number>>(new Set());
   const [stepVersions, setStepVersions] = useState<Record<number, number>>({});
   const stepVersionsRef = useRef(stepVersions);
 
@@ -999,14 +1078,7 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
   // State for onboarding progress
   const [onboardingProgress, setOnboardingProgress] =
     useState<OnboardingProgress | null>(null);
-  const [villaId, setVillaId] = useState<string | null>(() => {
-    // Initialize with any persisted villa ID from localStorage
-    if (typeof window !== 'undefined') {
-      const persistedId = userId ? localStorage.getItem(`onboarding_villa_${userId}`) : localStorage.getItem('currentVillaId');
-      return persistedId || null;
-    }
-    return null;
-  });
+  const [villaId, setVillaId] = useState<string | null>(null); // Don't initialize from localStorage in useState - do it in useEffect
   const [error, setError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState<number>(0);
   const [criticalError, setCriticalError] = useState<boolean>(false);
@@ -1063,19 +1135,39 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
   }, [stepVersions]);
 
   const getPendingBatchSize = useCallback(() => {
-    let count = 0;
+    // 🔧 FIXED: Use new AutoSaveQueue for pending operations count
+    const pendingOperations = autoSaveQueue.current.getPendingOperations();
     const blocked = validationBlockedStepsRef.current;
-    batchedSavesRef.current.forEach((_, step) => {
-      if (!blocked.has(step)) {
-        count += 1;
-      }
-    });
-    return count;
+
+    // Count non-blocked pending operations
+    return pendingOperations.filter(op => !blocked.has(op.stepNumber)).length;
   }, []);
 
   useEffect(() => {
     setIsHydrated(true);
   }, []);
+
+  // 🔧 FIXED: Loading timeout safety mechanism - prevent infinite loading
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (!hasLoadedInitialData && (isLoading || (!userLoaded || !authLoaded))) {
+        logger.log("SYSTEM", "LOADING_TIMEOUT_REACHED", {
+          isLoading,
+          hasLoadedInitialData,
+          userLoaded,
+          authLoaded,
+          timeout: "15s"
+        });
+        setLoadingTimeoutReached(true);
+        setIsLoading(false);
+        setHasLoadedInitialData(true);
+        // Show error message to user
+        toast.error("Loading is taking longer than expected. The app will continue loading in the background.");
+      }
+    }, 15000); // 15 second timeout
+
+    return () => clearTimeout(timeoutId);
+  }, [isLoading, hasLoadedInitialData, userLoaded, authLoaded, logger]);
 
   // Connection monitoring and error handling
   useEffect(() => {
@@ -1412,30 +1504,150 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
     getPendingBatchSize,
   ]);
 
-  // Enhanced auto-save with batching and race condition prevention
-  const performAutoSave = useCallback(async (): Promise<boolean> => {
-    if (shouldSkipAutoSaveCheck()) {
-      if (saveInProgressRef.current) {
-        logger.log("AUTOSAVE", "SAVE_ALREADY_IN_PROGRESS");
+  // 🔧 FIXED: Enhanced batch save function that works with AutoSaveQueue
+  const processSaveOperations = useCallback(async (operations: SaveOperation[]): Promise<SaveResult[]> => {
+    const results: SaveResult[] = [];
+
+    try {
+      const api = await ensureAuthenticatedApi();
+
+      // Process each operation individually for better error isolation
+      for (const operation of operations) {
+        try {
+          // 🔧 FIXED: Don't transform data here - API client now handles field mapping
+          // This prevents double transformation which was causing data corruption
+          const stepData = operation.data;
+
+          logger.log(operation.stepNumber, "AUTOSAVE_REQUEST", {
+            operationId: operation.id,
+            version: operation.version,
+            dataSize: Object.keys(stepData).length,
+          });
+
+          const response = await api.autoSaveOnboardingStep(
+            villaId!,
+            operation.stepNumber,
+            stepData, // Pass raw frontend data - API client will handle transformation
+            operation.version || 1,
+            {
+              operationId: operation.id,
+              clientTimestamp: operation.clientTimestamp,
+            }
+          );
+
+          if (response.success && response.data) {
+            // Update step version for optimistic locking
+            const newVersion = response.version || (operation.version || 1) + 1;
+            setStepVersions(prev => ({
+              ...prev,
+              [operation.stepNumber]: newVersion
+            }));
+
+            results.push({
+              success: true,
+              operationId: operation.id,
+              stepNumber: operation.stepNumber,
+              newVersion: newVersion,
+            });
+
+            logger.log(operation.stepNumber, "AUTOSAVE_SUCCESS", {
+              operationId: operation.id,
+              newVersion: newVersion,
+            });
+
+          } else {
+            // Handle save failure
+            const errorMessage = response.error || 'Unknown save error';
+            const errorString = typeof errorMessage === 'string' ? errorMessage : String(errorMessage);
+            const isConflict = response.status === 409 || errorString.includes('version') || errorString.includes('conflict');
+
+            results.push({
+              success: false,
+              operationId: operation.id,
+              stepNumber: operation.stepNumber,
+              error: errorMessage,
+              conflictDetected: isConflict,
+            });
+
+            logger.log(operation.stepNumber, "AUTOSAVE_FAILURE", {
+              operationId: operation.id,
+              error: errorMessage,
+              isConflict,
+            });
+          }
+
+        } catch (operationError) {
+          const errorMessage = operationError instanceof Error ? operationError.message : 'Operation failed';
+          const errorString = typeof errorMessage === 'string' ? errorMessage : String(errorMessage);
+          const isConflict = errorString.includes('version') || errorString.includes('conflict');
+
+          results.push({
+            success: false,
+            operationId: operation.id,
+            stepNumber: operation.stepNumber,
+            error: errorMessage,
+            conflictDetected: isConflict,
+          });
+
+          logger.trackError("AUTOSAVE", operationError instanceof Error ? operationError : new Error(errorMessage), {
+            context: "individual_operation",
+            operationId: operation.id,
+            stepNumber: operation.stepNumber,
+          });
+        }
       }
+
+      return results;
+
+    } catch (batchError) {
+      // Handle complete batch failure
+      const errorMessage = batchError instanceof Error ? batchError.message : 'Batch save failed';
+      logger.trackError("AUTOSAVE", batchError instanceof Error ? batchError : new Error(errorMessage), {
+        context: "batch_processing",
+        operationCount: operations.length,
+      });
+
+      // Return failure for all operations
+      return operations.map(op => ({
+        success: false,
+        operationId: op.id,
+        stepNumber: op.stepNumber,
+        error: errorMessage,
+      }));
+    }
+  }, [ensureAuthenticatedApi, logger, villaId, setStepVersions]);
+
+  // 🔧 FIXED: Enhanced auto-save with AutoSaveQueue - eliminates race conditions and data loss
+  const performAutoSave = useCallback(async (): Promise<boolean> => {
+    // Early exit checks
+    if (shouldSkipAutoSaveCheck()) {
+      logger.log("AUTOSAVE", "SKIP_CHECK_TRIGGERED", {
+        hasActiveOperations: autoSaveQueue.current.hasActiveOperations(),
+        queueStatus: autoSaveQueue.current.getQueueStatus(),
+      });
       return true;
     }
 
+    if (!villaId) {
+      logger.log("AUTOSAVE", "NO_VILLA_ID");
+      return false;
+    }
+
+    // Clear any existing timeout
     if (autoSaveTimeoutRef.current) {
       clearTimeout(autoSaveTimeoutRef.current);
       autoSaveTimeoutRef.current = null;
     }
 
-    saveInProgressRef.current = true;
-    const currentOperationId = ++saveOperationIdRef.current;
-    let stepSuccess = true;
     const now = Date.now();
 
+    // Rate limiting check
     if (isRateLimited(now, lastSaveTimeRef.current)) {
-      saveInProgressRef.current = false;
+      logger.log("AUTOSAVE", "RATE_LIMITED");
       return true;
     }
 
+    // Update state to indicate saving is in progress
     setIsSaving(true);
     setAutoSaveStatus("saving");
     lastSaveTimeRef.current = now;
@@ -1443,39 +1655,42 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
     logger.startAutoSave(currentStep);
 
     try {
-      const api = await ensureAuthenticatedApi();
+      // 🔧 FIXED: Use AutoSaveQueue instead of manual batching
+      // This provides proper deduplication, race condition prevention, and retry logic
+      const queueResult = await autoSaveQueue.current.processQueue(processSaveOperations);
 
-      stepSuccess = await executeAutoSaveCore(
-        api,
-        villaId!,
-        currentOperationId
-      );
+      if (queueResult.success) {
+        const successCount = queueResult.results.filter(r => r.success).length;
+        const totalCount = queueResult.results.length;
 
-      logger.endAutoSave(
-        currentStep,
-        stepSuccess,
-        JSON.stringify(
-          buildSaveBatch(batchedSavesRef.current, {
-            blockedSteps: validationBlockedStepsRef.current,
-            maxBatchSize: AUTO_SAVE_CONFIG.maxBatchSize,
-          })
-        ).length
-      );
+        logger.endAutoSave(currentStep, successCount === totalCount, totalCount);
 
-      awaitingVillaFlushRef.current = false;
+        awaitingVillaFlushRef.current = false;
 
-      if (isMountedRef.current) {
-        setAutoSaveStatus(stepSuccess ? "idle" : "error");
+        if (isMountedRef.current) {
+          setAutoSaveStatus(successCount === totalCount ? "idle" : "error");
+        }
+
+        // Also handle last save time for UI display
+        if (successCount > 0) {
+          setLastSaveTime(new Date());
+        }
+
+        return successCount === totalCount;
+      } else {
+        throw new Error('Queue processing failed');
       }
+
     } catch (error) {
-      stepSuccess = false;
       logger.endAutoSave(currentStep, false);
       const err = ensureError(error);
       logger.trackError("AUTOSAVE", err, {
         villaId,
         currentStep,
-        batchSize: getPendingBatchSize(),
+        queueStatus: autoSaveQueue.current.getQueueStatus(),
+        context: "queue_processing_error",
       });
+
       if (isMountedRef.current) {
         setAutoSaveStatus("error");
       }
@@ -1483,30 +1698,62 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
       if (!isOfflineMode) {
         toast.error("Auto-save failed. Your changes are backed up locally.");
       }
+
+      return false;
+
     } finally {
       if (isMountedRef.current) {
         setIsSaving(false);
       }
-      if (saveOperationIdRef.current === currentOperationId) {
-        saveInProgressRef.current = false;
-      }
     }
-
-    return stepSuccess;
   }, [
     shouldSkipAutoSaveCheck,
-    executeAutoSaveCore,
+    villaId,
     currentStep,
-    ensureAuthenticatedApi,
     logger,
     isOfflineMode,
-    villaId,
-    getPendingBatchSize,
+    processSaveOperations,
+    setLastSaveTime,
   ]);
 
+  // Auto-save pending data when villa ID becomes available
   useEffect(() => {
     if (!villaId || !autoSaveEnabled) {
       return;
+    }
+
+    // If we have local step data but no saved data, trigger initial save
+    const hasUnsavedData = Object.keys(localStepData).length > 0 && Object.keys(lastSavedData).length === 0;
+
+    if (hasUnsavedData) {
+      logger.log("AUTOSAVE", "VILLA_ID_AVAILABLE_SAVING_PENDING_DATA", {
+        villaId,
+        stepDataKeys: Object.keys(localStepData),
+      });
+
+      // Add all pending step data to the queue
+      Object.entries(localStepData).forEach(([stepKey, stepData]) => {
+        const stepMatch = stepKey.match(/^step(\d+)$/);
+        if (stepMatch && stepData && typeof stepData === 'object') {
+          const stepNumber = parseInt(stepMatch[1], 10);
+          const currentVersion = stepVersionsRef.current[stepNumber] || 1;
+          autoSaveQueue.current.addSaveOperation(
+            stepNumber,
+            stepData as Record<string, unknown>,
+            currentVersion,
+            () => stepVersionsRef.current[stepNumber] || 1 // Always get latest version at execution time
+          );
+        }
+      });
+
+      // Trigger auto-save
+      performAutoSave().catch((error) => {
+        const err = ensureError(error);
+        logger.trackError("AUTOSAVE", err, {
+          context: "villa_id_available_flush",
+          villaId,
+        });
+      });
     }
 
     if (!awaitingVillaFlushRef.current) {
@@ -1524,7 +1771,7 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
         context: "villa_ready_flush",
       });
     });
-  }, [villaId, autoSaveEnabled, performAutoSave, logger, getPendingBatchSize]);
+  }, [villaId, autoSaveEnabled, performAutoSave, logger, getPendingBatchSize, localStepData, lastSavedData]);
 
   useEffect(() => {
     if (!AUTO_SAVE_CONFIG.enabled) {
@@ -1570,12 +1817,7 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
         validationBlockedStepsRef.current.delete(stepNumber);
       }
 
-      const batchedSaves = batchedSavesRef.current;
-      if (batchedSaves.has(stepNumber)) {
-        batchedSaves.delete(stepNumber);
-      }
-      batchedSaves.set(stepNumber, data);
-
+      // Update local state immediately for responsive UI
       if (isMountedRef.current) {
         setLocalStepData((prev) => {
           const updated = { ...prev, [`step${stepNumber}`]: data };
@@ -1583,22 +1825,53 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
         });
       }
 
-      // Clear existing timeout
-      if (autoSaveTimeoutRef.current) {
-        clearTimeout(autoSaveTimeoutRef.current);
-      }
+      // Only queue for auto-save if we have a villa ID
+      if (villaId) {
+        // 🔧 FIXED: Use AutoSaveQueue for proper deduplication and race condition prevention
+        const currentVersion = stepVersionsRef.current[stepNumber] || 1;
+        const operationId = autoSaveQueue.current.addSaveOperation(
+          stepNumber,
+          data,
+          currentVersion,
+          () => stepVersionsRef.current[stepNumber] || 1 // Always get latest version at execution time
+        );
 
-      // Set new timeout with batching
-      autoSaveTimeoutRef.current = setTimeout(() => {
-        performAutoSave().catch((error) => {
-          const err = error instanceof Error ? error : new Error(String(error));
-          logger.trackError("AUTOSAVE", err, {
-            context: "timeout_autosave",
-          });
+        // Also update old system during migration (will be removed later)
+        const batchedSaves = batchedSavesRef.current;
+        if (batchedSaves.has(stepNumber)) {
+          batchedSaves.delete(stepNumber);
+        }
+        batchedSaves.set(stepNumber, data);
+
+        // Clear existing timeout
+        if (autoSaveTimeoutRef.current) {
+          clearTimeout(autoSaveTimeoutRef.current);
+        }
+
+        // 🔧 FIXED: Enhanced timeout logic with AutoSaveQueue awareness
+        autoSaveTimeoutRef.current = setTimeout(() => {
+          // Check if we have pending operations before processing
+          if (autoSaveQueue.current.hasActiveOperations() && villaId) {
+            performAutoSave().catch((error) => {
+              const err = error instanceof Error ? error : new Error(String(error));
+              logger.trackError("AUTOSAVE", err, {
+                context: "timeout_autosave",
+                stepNumber,
+                operationId,
+                queueStatus: autoSaveQueue.current.getQueueStatus(),
+              });
+            });
+          }
+        }, AUTO_SAVE_CONFIG.debounceTime);
+      } else {
+        // Store data locally without auto-save until villa ID is available
+        logger.log("AUTOSAVE", "SKIPPING_AUTOSAVE_NO_VILLA_ID", {
+          stepNumber,
+          dataSize: Object.keys(data).length,
         });
-      }, AUTO_SAVE_CONFIG.debounceTime);
+      }
     },
-    [performAutoSave, logger]
+    [performAutoSave, logger, villaId]
   );
 
   // Enhanced error recovery mechanism
@@ -1668,6 +1941,13 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
       try {
         const authenticatedApi = await ensureAuthenticatedApi();
 
+        logger.log("SYSTEM", "LOAD_DATA_DEBUG", {
+          forceNew,
+          forceNewSession,
+          currentVillaId: villaId,
+          userId,
+        });
+
         if (forceNew) {
           logger.log("SYSTEM", "Force new session - skipping existing villa check");
           clearStoredVillaIds(userId);
@@ -1700,7 +1980,14 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
           });
 
           let sessionLoaded = false;
+
+          // Only try to load existing session if we have a persisted villa ID
           if (persistedVillaId) {
+            logger.log("SESSION", "ATTEMPTING_TO_LOAD_EXISTING_SESSION", {
+              villaId: persistedVillaId,
+              source,
+            });
+
             sessionLoaded = await loadExistingSession({
               persistedVillaId,
               source,
@@ -1719,15 +2006,25 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
               setStepVersions,
               loadFieldProgress,
             });
+          } else {
+            logger.log("SESSION", "NO_PERSISTED_VILLA_ID_FOUND", {
+              userId,
+              source: "localStorage_empty",
+            });
           }
 
+          // Only start new session if we couldn't load an existing one
           if (!sessionLoaded) {
             if (persistedVillaId) {
               logger.log("SESSION", "STARTING_NEW_SESSION_AFTER_VALIDATION_FAILURE", {
                 previousVillaId: persistedVillaId,
+                reason: "existing_session_load_failed",
               });
             } else {
-              logger.log("SYSTEM", "No villa found, starting onboarding process");
+              logger.log("SESSION", "STARTING_NEW_SESSION_NO_EXISTING_DATA", {
+                userId,
+                reason: "no_persisted_villa_id",
+              });
             }
 
             await startNewOnboardingSession({
@@ -1887,9 +2184,34 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
     return summary;
   }, [getStepErrors, warnings, totalSteps, completedSteps]);
 
-  // Load data on mount
+  // Track whether villa ID initialization has been attempted
+  const [villaIdInitialized, setVillaIdInitialized] = useState(false);
+
+  // Initialize villa ID from localStorage after authentication is ready
   useEffect(() => {
-    if (!userLoaded || !authLoaded) {
+    if (!userLoaded || !authLoaded || !userId) {
+      return;
+    }
+
+    // Only initialize villa ID if we don't have one already
+    if (!villaId) {
+      const { villaId: persistedVillaId } = readPersistedVillaId(userId);
+      if (persistedVillaId) {
+        logger.log("SYSTEM", "INITIALIZING_VILLA_ID_FROM_STORAGE", {
+          villaId: persistedVillaId,
+          userId,
+        });
+        setVillaId(persistedVillaId);
+      }
+    }
+
+    // Mark villa ID initialization as complete
+    setVillaIdInitialized(true);
+  }, [userLoaded, authLoaded, userId, villaId, logger]);
+
+  // Load data on mount - wait for villa ID initialization
+  useEffect(() => {
+    if (!userLoaded || !authLoaded || !userId || !villaIdInitialized) {
       return;
     }
 
@@ -1911,7 +2233,7 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
         context: "initial_data_load",
       });
     });
-  }, [loadOnboardingData, logger, forceNewSession, isLoading, userLoaded, authLoaded]);
+  }, [loadOnboardingData, logger, forceNewSession, isLoading, userLoaded, authLoaded, userId, villaIdInitialized]);
 
   // Enhanced cleanup - Fix memory leaks
   useEffect(() => {
@@ -2212,7 +2534,9 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
 
     return (
       <StepErrorBoundary stepName={`Step ${currentStep}`}>
-        <StepComponent {...commonProps} />
+        <Suspense fallback={<StepLoadingFallback stepNumber={currentStep} />}>
+          <StepComponent {...commonProps} />
+        </Suspense>
       </StepErrorBoundary>
     );
   }, [
@@ -2226,18 +2550,28 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
     userId,
   ]);
 
-  if (isLoading && !hasLoadedInitialData) {
+  // 🔧 FIXED: Enhanced loading condition to prevent infinite loading
+  // Show loading when:
+  // 1. Authentication is still loading (userLoaded or authLoaded is false)
+  // 2. Component is actively loading data (isLoading is true) AND initial data hasn't been loaded yet
+  // 3. BUT NOT if the loading timeout has been reached (safety fallback)
+  if ((!loadingTimeoutReached) && ((!userLoaded || !authLoaded) || (isLoading && !hasLoadedInitialData))) {
     logger.log("RENDER", "SHOWING_LOADING_SCREEN", {
       isLoading,
       hasLoadedInitialData,
-      villaId
+      userLoaded,
+      authLoaded,
+      villaId,
+      reason: !userLoaded ? 'user_loading' : !authLoaded ? 'auth_loading' : 'data_loading'
     });
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-[#009990] mx-auto"></div>
           <p className="mt-4 text-slate-600">
-            Loading your onboarding progress...
+            {!userLoaded || !authLoaded
+              ? "Initializing authentication..."
+              : "Loading your onboarding progress..."}
           </p>
         </div>
       </div>

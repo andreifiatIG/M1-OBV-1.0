@@ -490,9 +490,9 @@ router.post('/start',
     const { villaName } = req.body;
     const userId = req.user?.id || 'system';
     
-    // Create villa for onboarding
+    // Create villa for onboarding - no default name
     const villa = await villaService.createVillaForOnboarding({
-      name: villaName || 'New Villa',
+      name: villaName || '',
       owner_id: userId
     });
     
@@ -521,10 +521,63 @@ router.post('/start',
   }
 });
 
-// Get onboarding progress for a villa (with caching)
-router.get('/:villaId', 
-  onboardingReadRateLimit, 
-  authenticate, 
+// Get onboarding progress for a villa (with caching) - BOTH routes for compatibility
+router.get('/:villaId/progress',
+  onboardingReadRateLimit,
+  authenticate,
+  cacheMiddleware(CacheDuration.SHORT),
+  async (req: Request, res: Response) => {
+  try {
+    const { villaId } = req.params;
+    const userId = req.user?.id;
+
+    const progress = await onboardingService.getOnboardingProgress(villaId, userId);
+
+    logger.debug('[VILLA] API Response - Villa data summary:', {
+      villaId: progress.villa?.id,
+      villaFields: Object.keys(progress.villa || {}),
+      staffCount: progress.villa?.staff?.length || 0,
+      documentCount: progress.villa?.documents?.length || 0,
+      photoCount: progress.villa?.photos?.length || 0,
+    });
+    // 🔍 STAFF DEBUG: Log staff data specifically (without full payload)
+    if (progress.villa?.staff?.length) {
+      logger.info('🔍 [STAFF-DEBUG] Staff data in API response:', {
+        villaId: progress.villa?.id,
+        hasVilla: true,
+        staffCount: progress.villa.staff.length,
+        staffSample: progress.villa.staff.slice(0, 3).map((s: any) => ({
+          id: s.id,
+          firstName: s.firstName,
+          lastName: s.lastName,
+          position: s.position,
+        })),
+      });
+    } else {
+      logger.info('🔍 [STAFF-DEBUG] No active staff linked to villa.', {
+        villaId: progress.villa?.id,
+      });
+    }
+
+    res.json({
+      success: true,
+      data: progress,
+    });
+  } catch (error) {
+    console.error('Error getting onboarding progress:', error);
+    const message = error instanceof Error ? error.message : 'Failed to get onboarding progress';
+    const status = typeof message === 'string' && message.toLowerCase().includes('not found') ? 404 : 500;
+    res.status(status).json({
+      success: false,
+      message,
+    });
+  }
+});
+
+// Get onboarding progress for a villa (with caching) - Legacy route for backward compatibility
+router.get('/:villaId',
+  onboardingReadRateLimit,
+  authenticate,
   cacheMiddleware(CacheDuration.SHORT),
   async (req: Request, res: Response) => {
   try {
@@ -574,6 +627,121 @@ router.get('/:villaId',
     });
   }
 });
+
+// Auto-save onboarding step (compatible with frontend AutoSaveQueue)
+router.post('/:villaId/autosave',
+  autoSaveRateLimit,
+  authenticate,
+  createSanitizationMiddleware({
+    params: {
+      villaId: sanitizers.text,
+    },
+    body: {
+      step: sanitizers.integer,
+      data: (data: any) => {
+        if (typeof data !== 'object' || data === null) return {};
+
+        // Use the same sanitization as the main step route
+        const sanitized: any = {};
+
+        // Villa basic information
+        if (data.villaName) sanitized.villaName = sanitizers.text(data.villaName);
+        if (data.address) sanitized.address = sanitizers.text(data.address);
+        if (data.villaAddress) sanitized.address = sanitizers.text(data.villaAddress);
+        if (data.city) sanitized.city = sanitizers.text(data.city);
+        if (data.villaCity) sanitized.city = sanitizers.text(data.villaCity);
+        if (data.country) sanitized.country = sanitizers.text(data.country);
+        if (data.villaCountry) sanitized.country = sanitizers.text(data.villaCountry);
+        if (data.zipCode) sanitized.zipCode = sanitizers.text(data.zipCode);
+        if (data.villaPostalCode) sanitized.zipCode = sanitizers.text(data.villaPostalCode);
+        if (data.description) sanitized.description = sanitizers.richText(data.description, 'moderate');
+        if (data.shortDescription) sanitized.shortDescription = sanitizers.richText(data.shortDescription, 'strict');
+
+        // Property details
+        if (data.bedrooms !== undefined) sanitized.bedrooms = sanitizers.integer(data.bedrooms);
+        if (data.bathrooms !== undefined) sanitized.bathrooms = sanitizers.integer(data.bathrooms);
+        if (data.maxGuests !== undefined) sanitized.maxGuests = sanitizers.integer(data.maxGuests);
+        if (data.propertySize !== undefined) sanitized.propertySize = sanitizers.number(data.propertySize);
+        if (data.plotSize !== undefined) sanitized.plotSize = sanitizers.number(data.plotSize);
+        if (data.villaArea !== undefined) sanitized.propertySize = sanitizers.number(data.villaArea);
+        if (data.landArea !== undefined) sanitized.plotSize = sanitizers.number(data.landArea);
+
+        // Villa contact and links
+        if (data.propertyEmail) sanitized.propertyEmail = sanitizers.email(data.propertyEmail);
+        if (data.propertyWebsite) sanitized.propertyWebsite = sanitizers.url(data.propertyWebsite);
+        if (data.googleMapsLink) sanitized.googleMapsLink = sanitizers.url(data.googleMapsLink);
+        if (data.oldRatesCardLink) sanitized.oldRatesCardLink = sanitizers.url(data.oldRatesCardLink);
+        if (data.iCalCalendarLink) sanitized.iCalCalendarLink = sanitizers.url(data.iCalCalendarLink);
+
+        return sanitized;
+      },
+      version: sanitizers.integer,
+      clientTimestamp: sanitizers.text,
+      operationId: (val: any) => val ? sanitizers.text(val) : undefined,
+    },
+  }),
+  async (req: Request, res: Response) => {
+    try {
+      const { villaId } = req.params;
+      const { step, data: stepData, version, clientTimestamp, operationId } = req.body;
+      const userId = req.user?.id;
+
+      if (!ONBOARDING_STEPS.includes(step)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid step number',
+        });
+      }
+
+      const typedStep = step as OnboardingStep;
+
+      // Validate and canonicalize step data
+      const validationResult = safeValidateStepPayload(typedStep, stepData, false);
+      if (!validationResult.success) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid step payload',
+          errors: validationResult.errors,
+        });
+      }
+
+      const normalizedStepData = {
+        step: typedStep,
+        data: validationResult.data,
+        completed: false,
+        isAutoSave: true,
+        clientTimestamp,
+        operationId,
+        version,
+      };
+
+      const { progress, version: nextVersion } = await onboardingService.updateStep(villaId, normalizedStepData, userId);
+
+      res.json({
+        success: true,
+        data: progress,
+        version: nextVersion,
+        message: `Step ${step} auto-saved successfully`,
+      });
+    } catch (error) {
+      console.error('Error auto-saving onboarding step:', error);
+
+      if (error instanceof VersionConflictError) {
+        return res.status(409).json({
+          success: false,
+          message: 'Version conflict - data was updated by another process',
+          code: 'VERSION_CONFLICT',
+          retryAfter: 1,
+        });
+      }
+
+      res.status(500).json({
+        success: false,
+        message: error instanceof Error ? error.message : 'Auto-save failed',
+      });
+    }
+  }
+);
 
 // Lightweight onboarding progress summary (optimized for dashboard)
 router.get('/:villaId/summary',
@@ -661,7 +829,7 @@ router.put('/:villaId/step',
     if (error instanceof VersionConflictError) {
       return res.status(409).json({
         success: false,
-        message: error.message,
+        message: error instanceof Error ? error.message : 'Version conflict',
       });
     }
     const message = error instanceof Error ? error.message : 'Failed to update onboarding step';
@@ -733,7 +901,7 @@ router.patch('/:villaId/step/:step',
       if (error instanceof VersionConflictError) {
         return res.status(409).json({
           success: false,
-          message: error.message,
+          message: error instanceof Error ? error.message : 'Version conflict',
         });
       }
 

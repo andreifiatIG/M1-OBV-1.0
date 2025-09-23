@@ -7,40 +7,64 @@ import prisma from './prisma';
 export async function generateVillaCode(): Promise<string> {
   const prefix = 'VIL';
   const year = new Date().getFullYear().toString().slice(-2);
-  
+
   // Try up to 10 times to generate a unique code
   for (let attempt = 1; attempt <= 10; attempt++) {
     let villaCode: string;
-    
+
     if (attempt === 1) {
-      // First attempt: use count-based sequence
-      const startOfYear = new Date(new Date().getFullYear(), 0, 1);
-      const count = await prisma.villa.count({
+      // First attempt: find the highest existing sequence number for this year
+      const yearPrefix = `${prefix}${year}`;
+      const existingCodes = await prisma.villa.findMany({
         where: {
-          createdAt: { gte: startOfYear },
+          villaCode: {
+            startsWith: yearPrefix,
+          },
         },
+        select: { villaCode: true },
+        orderBy: { villaCode: 'desc' },
       });
-      const sequence = (count + 1).toString().padStart(4, '0');
+
+      let nextSequence = 1;
+      if (existingCodes.length > 0) {
+        // Extract sequence numbers and find the highest one
+        const sequences = existingCodes
+          .map(villa => {
+            const sequencePart = villa.villaCode.substring(yearPrefix.length);
+            // Only consider codes that end with 4 digits (sequence codes, not random codes)
+            if (/^\d{4}$/.test(sequencePart)) {
+              return parseInt(sequencePart, 10);
+            }
+            return 0;
+          })
+          .filter(seq => seq > 0);
+
+        if (sequences.length > 0) {
+          nextSequence = Math.max(...sequences) + 1;
+        }
+      }
+
+      const sequence = nextSequence.toString().padStart(4, '0');
       villaCode = `${prefix}${year}${sequence}`;
     } else {
-      // Subsequent attempts: add random component
+      // Subsequent attempts: use random component
       const randomNum = Math.floor(Math.random() * 9000) + 1000;
       villaCode = `${prefix}${year}${randomNum}`;
     }
-    
-    // Check if this code already exists
+
+    // Check if this code already exists (double-check for safety)
     const existingVilla = await prisma.villa.findUnique({
       where: { villaCode },
       select: { id: true },
     });
-    
+
     if (!existingVilla) {
       return villaCode;
     }
-    
+
     console.warn(`Villa code ${villaCode} already exists, trying again (attempt ${attempt}/10)`);
   }
-  
+
   // Fallback: use timestamp-based code if all attempts fail
   const timestamp = Date.now().toString().slice(-6);
   const fallbackCode = `${prefix}${year}${timestamp}`;

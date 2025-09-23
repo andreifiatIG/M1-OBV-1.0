@@ -5,7 +5,19 @@ import {
   validateStepPayload,
   type OnboardingStep,
 } from '@contract/onboardingContract';
-import { assertOnboardingStep } from './data-mapper';
+import { assertOnboardingStep, mapOnboardingDataToBackend, mapOnboardingDataFromBackend } from './data-mapper';
+import {
+  mapVillaBackendToFrontend,
+  mapVillaFrontendToBackend,
+  mapOwnerBackendToFrontend,
+  mapOwnerFrontendToBackend,
+  debugFieldMapping,
+  validateFieldMappingCompleteness,
+  type BackendVillaFields,
+  type BackendOwnerFields,
+  type FrontendVillaFields,
+  type FrontendOwnerFields,
+} from './fieldMappings';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001';
 
@@ -74,6 +86,9 @@ export class ClientApiClient {
   private tokenExpiryTime: number | null = null;
   private isRefreshingToken: boolean = false;
   private tokenRefreshPromise: Promise<string | null> | null = null;
+  private readonly progressCache = new Map<string, { timestamp: number; response: ApiResponse }>();
+  private readonly progressInFlight = new Map<string, Promise<ApiResponse>>();
+  private static readonly PROGRESS_CACHE_TTL = 30 * 1000;
 
   constructor(token?: string) {
     this.baseURL = API_URL;
@@ -191,17 +206,62 @@ export class ClientApiClient {
         });
       }
 
+      if (!response) {
+        throw new Error('Network error');
+      }
+
+      const getHeader = (name: string): string | null => {
+        const headerSource = (response as unknown as { headers?: unknown }).headers;
+        if (headerSource && typeof (headerSource as Headers).get === 'function') {
+          return (headerSource as Headers).get(name);
+        }
+        if (headerSource && typeof headerSource === 'object') {
+          const lookup = headerSource as Record<string, string | undefined>;
+          const direct = lookup[name];
+          if (typeof direct === 'string') {
+            return direct;
+          }
+          const lowerCase = lookup[name.toLowerCase()];
+          return typeof lowerCase === 'string' ? lowerCase : null;
+        }
+        return null;
+      };
+
+      const readTextBody = async () => {
+        if (typeof (response as Response).text === 'function') {
+          return await (response as Response).text();
+        }
+        return '';
+      };
+
+      const readJsonBody = async () => {
+        if (typeof (response as Response).json === 'function') {
+          return await (response as Response).json();
+        }
+        const fallbackText = await readTextBody();
+        try {
+          return fallbackText ? JSON.parse(fallbackText) : {};
+        } catch (parseError) {
+          if (debugLoggingEnabled) {
+            console.error('JSON parsing failed from fallback text:', parseError);
+          }
+          throw parseError;
+        }
+      };
+
       // Check if response is JSON by looking at content-type
-      const contentType = response.headers.get('content-type');
-      const isJson = contentType && contentType.includes('application/json');
+      const contentType = getHeader('content-type');
+      const isJson =
+        (contentType && contentType.includes('application/json')) ||
+        typeof (response as Response).json === 'function';
       
       let data: any;
       if (isJson) {
         try {
-          data = await response.json();
+          data = await readJsonBody();
         } catch (parseError) {
           // If JSON parsing fails, treat as text response
-          const textResponse = await response.text();
+          const textResponse = await readTextBody();
           if (debugLoggingEnabled) {
             console.error('JSON parsing failed:', parseError);
           }
@@ -212,20 +272,23 @@ export class ClientApiClient {
         }
       } else {
         // Non-JSON response (likely HTML error page or plain text)
-        const textResponse = await response.text();
+        const textResponse = await readTextBody();
         
         // Handle common HTTP error responses
         if (response.status === 429) {
-          const retryAfter = response.headers.get('retry-after') || response.headers.get('x-ratelimit-reset');
+          const retryAfter = getHeader('retry-after') || getHeader('x-ratelimit-reset');
           const errorMessage = retryAfter 
             ? `Rate limit exceeded. Please wait ${retryAfter} seconds and try again.`
             : 'Too many requests. Please wait a moment and try again.';
           
+          const retryAfterValue = retryAfter
+            ? parseInt(retryAfter, 10)
+            : null;
           return {
             success: false,
             error: errorMessage,
             status: 429,
-            retryAfter: retryAfter ? parseInt(retryAfter) : null,
+            retryAfter: retryAfterValue,
           };
         } else if (response.status === 403) {
           return {
@@ -246,16 +309,20 @@ export class ClientApiClient {
       if (!response.ok) {
         // Special handling for rate limit errors
         if (response.status === 429) {
-          const retryAfter = response.headers.get('retry-after') || response.headers.get('x-ratelimit-reset');
+          const retryAfter = getHeader('retry-after') || getHeader('x-ratelimit-reset');
           const errorMessage = retryAfter
             ? `Rate limit exceeded. Please wait ${retryAfter} seconds and try again.`
             : data?.message || 'Too many requests. Please wait a moment and try again.';
-          
+          const retryAfterValue = retryAfter
+            ? parseInt(retryAfter, 10)
+            : typeof (data as { retryAfter?: number })?.retryAfter === 'number'
+              ? (data as { retryAfter?: number }).retryAfter
+              : null;
           return {
             success: false,
             error: errorMessage,
             status: 429,
-            retryAfter: retryAfter ? parseInt(retryAfter) : null,
+            retryAfter: retryAfterValue,
           };
         }
         
@@ -267,10 +334,21 @@ export class ClientApiClient {
         };
       }
 
-      const payload = data && Object.prototype.hasOwnProperty.call(data, 'data') ? data.data : data;
-      const metadata = { ...data };
+      if (
+        data &&
+        typeof data === 'object' &&
+        Object.prototype.hasOwnProperty.call(data, 'success')
+      ) {
+        return data as ApiResponse<T>;
+      }
+
+      const payload =
+        data && Object.prototype.hasOwnProperty.call(data, 'data')
+          ? (data as { data: T }).data
+          : data;
+      const metadata = { ...((typeof data === 'object' && data) || {}) };
       if (metadata && Object.prototype.hasOwnProperty.call(metadata, 'data')) {
-        delete metadata.data;
+        delete (metadata as Record<string, unknown>).data;
       }
 
       return {
@@ -279,28 +357,24 @@ export class ClientApiClient {
         ...metadata,
       };
     } catch (error) {
-      // Handle network errors more gracefully
-      if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
-        // Only log once per 30 seconds to reduce console spam
-        const now = Date.now();
-        if (!window.__lastBackendErrorTime || now - window.__lastBackendErrorTime > 30000) {
-          console.warn(`⚠️ Backend unavailable at ${this.baseURL}. Running in offline mode.`);
-          window.__lastBackendErrorTime = now;
-        }
-        
+      const message =
+        error instanceof Error && error.message ? error.message : 'Network error';
+      const isNetworkError =
+        /network error/i.test(message) || /failed to fetch/i.test(message);
+
+      if (isNetworkError) {
         return {
           success: false,
-          error: 'Backend unavailable',
+          error: message,
           offline: true,
         };
       }
-      
-      // Log other errors normally
+
       console.error('API request failed:', error);
-      
+
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred',
+        error: message,
       };
     }
   }
@@ -401,65 +475,66 @@ export class ClientApiClient {
         };
       }
       
-      // Transform and ensure safe access to nested objects
+      // 🔧 FIXED: Using unified field mapping system to eliminate field mapping chaos
+      // This replaces the complex fallback logic with single source of truth transformations
+
+      // Use unified field mapping for villa data transformation
+      const mappedVillaData = mapVillaBackendToFrontend(villa as BackendVillaFields);
+
+      // Use unified field mapping for owner data transformation
+      const mappedOwnerData = ownerDetails ? mapOwnerBackendToFrontend(ownerDetails as BackendOwnerFields) : null;
+
       const transformedData = {
         villa: {
+          // Use mapped data as base
+          ...mappedVillaData,
+
+          // Add system fields and defaults that need special handling
           id: villa.id || null,
           villaCode: villa.villaCode || 'N/A',
           villaName: villa.villaName || 'Unnamed Villa',
-          villaAddress: villa.villaAddress || villa.address || '',
-          villaCity: villa.villaCity || villa.city || '',
-          villaPostalCode: villa.villaPostalCode || villa.zipCode || '',
-          location: villa.location || '',
-          address: villa.address || '',
-          city: villa.city || '',
-          country: villa.country || '',
-          zipCode: villa.zipCode || '',
-          latitude: villa.latitude || null,
-          longitude: villa.longitude || null,
-          bedrooms: villa.bedrooms || 0,
-          bathrooms: villa.bathrooms || 0,
-          maxGuests: villa.maxGuests || 0,
-          propertySize: villa.propertySize || null,
-          plotSize: villa.plotSize || null,
-          landArea: villa.landArea || villa.plotSize || 0,
-          villaArea: villa.villaArea || villa.propertySize || 0,
-          yearBuilt: villa.yearBuilt || null,
-          renovationYear: villa.renovationYear || null,
-          propertyType: villa.propertyType || 'VILLA',
-          villaStyle: villa.villaStyle || null,
+
+          // Ensure string defaults for UI consumption
           description: villa.description || '',
           shortDescription: villa.shortDescription || '',
+          googleMapsLink: villa.googleMapsLink || '',
+          oldRatesCardLink: villa.oldRatesCardLink || '',
+          iCalCalendarLink: villa.iCalCalendarLink || '',
+
+          // System fields
           tags: Array.isArray(villa.tags) ? villa.tags : [],
           status: villa.status || 'DRAFT',
           isActive: villa.isActive !== undefined ? villa.isActive : true,
           createdAt: villa.createdAt || null,
           updatedAt: villa.updatedAt || null,
-          googleCoordinates: villa.googleCoordinates || '',
-          locationType: villa.locationType || '',
-          googleMapsLink: villa.googleMapsLink || '',
-          oldRatesCardLink: villa.oldRatesCardLink || '',
-          iCalCalendarLink: villa.iCalCalendarLink || ''
+
+          // Generate combined coordinates for display
+          googleCoordinates: villa.latitude && villa.longitude
+            ? `${villa.latitude}, ${villa.longitude}`
+            : '',
         },
-        ownerDetails: ownerDetails ? {
+        ownerDetails: mappedOwnerData ? {
+          // Use mapped data as base
+          ...mappedOwnerData,
+
+          // Add any additional fields that need special handling
           ownerType: ownerDetails.ownerType || 'INDIVIDUAL',
-          companyName: ownerDetails.companyName || '',
-          companyAddress: ownerDetails.companyAddress || '',
-          companyTaxId: ownerDetails.companyTaxId || '',
-          companyVat: ownerDetails.companyVat || '',
-          ownerFullName: ownerDetails.ownerFullName || '',
-          ownerEmail: ownerDetails.ownerEmail || '',
-          ownerPhone: ownerDetails.ownerPhone || '',
-          ownerAddress: ownerDetails.ownerAddress || '',
-          ownerCity: ownerDetails.ownerCity || '',
-          ownerCountry: ownerDetails.ownerCountry || '',
-          ownerNationality: ownerDetails.ownerNationality || '',
-          ownerPassportNumber: ownerDetails.ownerPassportNumber || '',
-          villaManagerName: ownerDetails.villaManagerName || '',
-          villaManagerEmail: ownerDetails.villaManagerEmail || '',
-          villaManagerPhone: ownerDetails.villaManagerPhone || '',
-          propertyEmail: ownerDetails.propertyEmail || '',
-          propertyWebsite: ownerDetails.propertyWebsite || '',
+
+          // Legacy field compatibility (if needed)
+          ownerFullName: ownerDetails.ownerFullName ||
+            `${ownerDetails.firstName || ''} ${ownerDetails.lastName || ''}`.trim() || '',
+          ownerEmail: ownerDetails.ownerEmail || ownerDetails.email || '',
+          ownerPhone: ownerDetails.ownerPhone || ownerDetails.phone || '',
+          ownerAddress: ownerDetails.ownerAddress || ownerDetails.address || '',
+          ownerCity: ownerDetails.ownerCity || ownerDetails.city || '',
+          ownerCountry: ownerDetails.ownerCountry || ownerDetails.country || '',
+          ownerNationality: ownerDetails.ownerNationality || ownerDetails.nationality || '',
+          ownerPassportNumber: ownerDetails.ownerPassportNumber || ownerDetails.passportNumber || '',
+          villaManagerName: ownerDetails.villaManagerName || ownerDetails.managerName || '',
+          villaManagerEmail: ownerDetails.villaManagerEmail || ownerDetails.managerEmail || '',
+          villaManagerPhone: ownerDetails.villaManagerPhone || ownerDetails.managerPhone || '',
+
+          // Include any remaining owner fields
           ...ownerDetails
         } : null,
         contractualDetails: contractualDetails || null,
@@ -473,7 +548,13 @@ export class ClientApiClient {
         onboarding: onboarding || null,
         recentBookings: [] // Temporarily empty as booking model is not available
       };
-      
+
+      // Add debug logging for field mapping in development
+      debugFieldMapping(villa, transformedData.villa, "API Client Villa Profile Backend → Frontend");
+      if (ownerDetails && mappedOwnerData) {
+        debugFieldMapping(ownerDetails, mappedOwnerData, "API Client Owner Details Backend → Frontend");
+      }
+
       console.log('✅ Villa profile loaded successfully:', transformedData.villa.villaName);
       return {
         success: true,
@@ -606,12 +687,162 @@ export class ClientApiClient {
   async startOnboarding(villaName?: string) {
     return this.request('/api/onboarding/start', {
       method: 'POST',
-      body: JSON.stringify({ villaName: villaName || 'New Villa' }),
+      body: JSON.stringify({ villaName: villaName || '' }),
     });
   }
 
-  async getOnboardingProgress(villaId: string) {
-    return this.request(`/api/onboarding/${villaId}`);
+  async getOnboardingProgress(
+    villaId: string,
+    options: { forceRefresh?: boolean } = {}
+  ) {
+    const cacheKey = villaId;
+
+    if (!options.forceRefresh) {
+      const cached = this.progressCache.get(cacheKey);
+      if (
+        cached &&
+        Date.now() - cached.timestamp < ClientApiClient.PROGRESS_CACHE_TTL
+      ) {
+        return this.cloneApiResponse(cached.response);
+      }
+    }
+
+    if (this.progressInFlight.has(cacheKey)) {
+      return this.progressInFlight.get(cacheKey)!;
+    }
+
+    const fetchPromise = this.fetchOnboardingProgressWithRetry(villaId);
+    this.progressInFlight.set(cacheKey, fetchPromise);
+
+    try {
+      const result = await fetchPromise;
+      if (result.success) {
+        this.progressCache.set(cacheKey, {
+          timestamp: Date.now(),
+          response: this.cloneApiResponse(result),
+        });
+      }
+      return result;
+    } finally {
+      this.progressInFlight.delete(cacheKey);
+    }
+  }
+
+  private cloneApiResponse(response: ApiResponse): ApiResponse {
+    const cloned: ApiResponse = { ...response };
+    if (response.data !== undefined) {
+      cloned.data =
+        typeof response.data === 'object' && response.data !== null
+          ? JSON.parse(JSON.stringify(response.data))
+          : response.data;
+    }
+    return cloned;
+  }
+
+  private async fetchOnboardingProgressWithRetry(
+    villaId: string,
+    maxAttempts = 3
+  ): Promise<ApiResponse> {
+    let lastResult: ApiResponse | null = null;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const result = await this.request(`/api/onboarding/${villaId}/progress`, {
+        method: 'GET',
+      });
+      const transformed = this.transformProgressData(result);
+      if (transformed.success) {
+        return transformed;
+      }
+
+      lastResult = transformed;
+
+      const status = (transformed as { status?: number }).status;
+      const shouldRetryAuth =
+        status === 401 && this.token !== null && attempt < maxAttempts;
+      const shouldRetry =
+        transformed.offline === true ||
+        (typeof transformed.error === 'string' &&
+          /network error/i.test(transformed.error ?? '')) ||
+        shouldRetryAuth;
+
+      if (!shouldRetry || attempt === maxAttempts) {
+        return transformed;
+      }
+
+      if (shouldRetryAuth) {
+        this.setToken(null);
+      }
+
+      const delay = Math.min(500 * Math.pow(2, attempt - 1), 2000);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+
+    return lastResult ?? { success: false, error: 'Unknown error occurred' };
+  }
+
+  private pruneEmptyValues(input: Record<string, unknown>): Record<string, unknown> {
+    const pruned: Record<string, unknown> = {};
+    Object.entries(input).forEach(([key, val]) => {
+      if (val === '' || val === null || val === undefined) {
+        return;
+      }
+      if (Array.isArray(val) && val.length === 0) {
+        return;
+      }
+      pruned[key] = val;
+    });
+    return pruned;
+  }
+
+  private transformProgressData(result: ApiResponse): ApiResponse {
+    if (!result.success || !result.data || typeof result.data !== 'object') {
+      return result;
+    }
+
+    const data = Array.isArray(result.data)
+      ? result.data
+      : { ...(result.data as Record<string, unknown>) };
+
+    if (
+      data &&
+      typeof (data as Record<string, unknown>).stepData === 'object' &&
+      (data as Record<string, unknown>).stepData !== null
+    ) {
+      const rawStepData = (data as Record<string, unknown>)
+        .stepData as Record<string, unknown>;
+      const mappedStepData: Record<string, unknown> = {};
+
+      for (const [key, value] of Object.entries(rawStepData)) {
+        const match = key.match(/step(?:_|)?(\d+)/i);
+        const fallbackNumeric = /^[0-9]+$/.test(key) ? parseInt(key, 10) : NaN;
+        const stepNumber = match
+          ? parseInt(match[1], 10)
+          : fallbackNumeric;
+
+        if (
+          Number.isFinite(stepNumber) &&
+          typeof value === 'object' &&
+          value !== null
+        ) {
+          const mapped = mapOnboardingDataFromBackend(
+            stepNumber,
+            value as Record<string, unknown>
+          );
+          mappedStepData[key] = this.pruneEmptyValues(
+            mapped as Record<string, unknown>
+          );
+        } else {
+          mappedStepData[key] = value;
+        }
+      }
+
+      (data as Record<string, unknown>).stepData = mappedStepData;
+    }
+
+    return {
+      ...result,
+      data,
+    };
   }
 
   async getOnboardingProgressSummary(villaId: string) {
@@ -628,42 +859,131 @@ export class ClientApiClient {
   async saveOnboardingStep(villaId: string, step: number, data: Record<string, unknown>, options: { version?: number } = {}) {
     const typedStep: OnboardingStep = assertOnboardingStep(step);
 
+    const shouldApplyMapping = typedStep === 1;
+
     let normalizedPayload: Record<string, unknown>;
-    try {
-      const canonical = canonicalizeStepData(typedStep, data);
-      normalizedPayload = validateStepPayload(typedStep, canonical, false);
-    } catch (error) {
-      console.warn('Failed to normalize onboarding payload, sending raw data as fallback', {
-        step,
-        error,
-      });
+    if (shouldApplyMapping) {
+      try {
+        // 🔧 FIXED: Enhanced field transformation for step 1 to handle frontend field names
+        // Transform frontend field names to backend format before processing
+        const frontendData = data as any;
+        const backendTransformed = {
+          // Core villa information
+          villaName: frontendData.villaName,
+
+          // Address fields - map frontend names to backend names
+          address: frontendData.address || frontendData.villaAddress,
+          city: frontendData.city || frontendData.villaCity,
+          country: frontendData.country || frontendData.villaCountry,
+          zipCode: frontendData.zipCode || frontendData.villaPostalCode,
+
+          // Property size fields - map frontend names to backend names
+          propertySize: frontendData.propertySize || frontendData.villaArea,
+          plotSize: frontendData.plotSize || frontendData.landArea,
+
+          // Numeric fields (ensure proper type conversion)
+          bedrooms: frontendData.bedrooms !== undefined ? Number(frontendData.bedrooms) : undefined,
+          bathrooms: frontendData.bathrooms !== undefined ? Number(frontendData.bathrooms) : undefined,
+          maxGuests: frontendData.maxGuests !== undefined ? Number(frontendData.maxGuests) : undefined,
+          yearBuilt: frontendData.yearBuilt !== undefined ? Number(frontendData.yearBuilt) : undefined,
+          renovationYear: frontendData.renovationYear !== undefined ? Number(frontendData.renovationYear) : undefined,
+
+          // Coordinate fields
+          latitude: frontendData.latitude !== undefined ? Number(frontendData.latitude) : undefined,
+          longitude: frontendData.longitude !== undefined ? Number(frontendData.longitude) : undefined,
+
+          // Handle googleCoordinates field
+          googleCoordinates: frontendData.googleCoordinates,
+
+          // Text fields
+          propertyType: frontendData.propertyType,
+          villaStyle: frontendData.villaStyle,
+          description: frontendData.description,
+          shortDescription: frontendData.shortDescription,
+          locationType: frontendData.locationType,
+
+          // URL fields
+          googleMapsLink: frontendData.googleMapsLink,
+          oldRatesCardLink: frontendData.oldRatesCardLink,
+          iCalCalendarLink: frontendData.iCalCalendarLink,
+          propertyEmail: frontendData.propertyEmail,
+          propertyWebsite: frontendData.propertyWebsite,
+        };
+
+        // Remove undefined values to prevent issues
+        const cleanedData = Object.fromEntries(
+          Object.entries(backendTransformed).filter(([_, value]) => value !== undefined)
+        );
+
+        const transformedData = mapOnboardingDataToBackend(step, cleanedData);
+        const canonical = canonicalizeStepData(typedStep, transformedData);
+        normalizedPayload = validateStepPayload(typedStep, canonical, false);
+
+        if (
+          process.env.NODE_ENV === 'development' &&
+          process.env.NEXT_PUBLIC_DEBUG === 'true'
+        ) {
+          console.log('🗺️ API Client Field Transformation:', {
+            originalData: data,
+            backendTransformed: cleanedData,
+            finalPayload: normalizedPayload
+          });
+          debugFieldMapping(
+            data,
+            normalizedPayload,
+            `API Client Step ${step} Save Transform`
+          );
+        }
+      } catch (error) {
+        console.warn(
+          'Failed to normalize onboarding payload, sending raw data as fallback',
+          {
+            step,
+            error,
+          }
+        );
+        normalizedPayload = data;
+      }
+
+      if (
+        normalizedPayload &&
+        typeof normalizedPayload === 'object' &&
+        Object.keys(normalizedPayload).length === 0
+      ) {
+        normalizedPayload = data;
+      }
+    } else {
       normalizedPayload = data;
     }
 
-    let completed = false;
-    let payloadForRequest = normalizedPayload;
-    const completionCheck = safeValidateStepPayload(typedStep, normalizedPayload, true);
-    if (completionCheck.success) {
-      completed = true;
-      payloadForRequest = completionCheck.data;
-    } else {
-      console.warn('Step data not yet complete, deferring completion flag', {
-        step,
-        errors: completionCheck.errors,
-      });
+    const payloadForRequest = shouldApplyMapping
+      ? (() => {
+          const completionCheck = safeValidateStepPayload(
+            typedStep,
+            normalizedPayload,
+            true
+          );
+          return completionCheck.success
+            ? completionCheck.data
+            : normalizedPayload;
+        })()
+      : normalizedPayload;
+
+    const requestData = payloadForRequest;
+
+    const requestBody: Record<string, unknown> = {
+      step: typedStep,
+      data: requestData,
+    };
+
+    if (typeof options.version === 'number') {
+      requestBody.version = options.version;
     }
 
+    this.progressCache.delete(villaId);
     return this.request(`/api/onboarding/${villaId}/step`, {
-      method: 'PUT',
-      body: JSON.stringify({
-        step: typedStep,
-        data: payloadForRequest,
-        completed,
-        isAutoSave: false,
-        clientTimestamp: new Date().toISOString(),
-        operationId: Date.now(),
-        version: options.version,
-      }),
+      method: 'POST',
+      body: JSON.stringify(requestBody),
     });
   }
 
@@ -671,37 +991,59 @@ export class ClientApiClient {
     villaId: string,
     step: number,
     data: Record<string, unknown>,
-    version: number,
+    version?: number,
     metadata: { operationId?: string | number; clientTimestamp?: string } = {}
   ) {
-    const headers: Record<string, string> = {
-      'X-Auto-Save': 'true',
-      'If-Match': version.toString(),
-    };
-
     const typedStep: OnboardingStep = assertOnboardingStep(step);
 
-    let normalizedPayload: Record<string, unknown>;
-    try {
-      const canonical = canonicalizeStepData(typedStep, data);
-      normalizedPayload = validateStepPayload(typedStep, canonical, false);
-    } catch (error) {
-      console.warn('Failed to normalize onboarding payload for auto-save, using raw data', {
-        step,
-        error,
-      });
-      normalizedPayload = data;
+    const headers: Record<string, string> = {
+      'X-Auto-Save': 'true',
+    };
+    if (typeof version === 'number') {
+      headers['If-Match'] = version.toString();
     }
 
-    return this.request(`/api/onboarding/${villaId}/step/${typedStep}`, {
-      method: 'PATCH',
-      body: JSON.stringify({
-        data: normalizedPayload,
-        version,
-        clientTimestamp: metadata.clientTimestamp || new Date().toISOString(),
-        operationId: metadata.operationId ?? `${Date.now()}-${typedStep}`,
-      }),
+    const requestBody: Record<string, unknown> = {
+      step: typedStep,
+      data,
+    };
+
+    if (typeof version === 'number') {
+      requestBody.version = version;
+    }
+
+    if (metadata.operationId !== undefined) {
+      requestBody.operationId = metadata.operationId;
+    }
+
+    if (metadata.clientTimestamp) {
+      requestBody.clientTimestamp = metadata.clientTimestamp;
+    }
+
+    this.progressCache.delete(villaId);
+    return this.request(`/api/onboarding/${villaId}/autosave`, {
+      method: 'POST',
+      body: JSON.stringify(requestBody),
       headers,
+    });
+  }
+
+  async batchAutoSave(
+    villaId: string,
+    operations: Array<{ step: number; data: Record<string, unknown> }>
+  ) {
+    const normalizedOperations = operations.map((operation) => ({
+      step: assertOnboardingStep(operation.step),
+      data: operation.data,
+    }));
+
+    this.progressCache.delete(villaId);
+    return this.request(`/api/onboarding/${villaId}/batch-autosave`, {
+      method: 'POST',
+      body: JSON.stringify({ operations: normalizedOperations }),
+      headers: {
+        'X-Auto-Save': 'true',
+      },
     });
   }
 
@@ -719,8 +1061,17 @@ export class ClientApiClient {
   }
 
   async completeOnboarding(villaId: string) {
+    this.progressCache.delete(villaId);
     return this.request(`/api/onboarding/${villaId}/complete`, {
       method: 'POST',
+    });
+  }
+
+  async submitOnboarding(villaId: string, data: Record<string, unknown>) {
+    this.progressCache.delete(villaId);
+    return this.request(`/api/onboarding/${villaId}/submit`, {
+      method: 'POST',
+      body: JSON.stringify(data),
     });
   }
 

@@ -66,6 +66,7 @@ model Villa {
 model Owner {
   id                          String                  @id @default(uuid())
   villaId                     String                  @unique
+  clerkUserId                 String?                 @db.VarChar(255) // Clerk user ID for authentication
   firstName                   String                  @db.VarChar(100)
   lastName                    String                  @db.VarChar(100)
   email                       String                  @db.VarChar(255)
@@ -102,6 +103,7 @@ model Owner {
   villa                       Villa                   @relation(fields: [villaId], references: [id], onDelete: Cascade)
 
   @@index([email])
+  @@index([clerkUserId])
   @@index([villaId, firstName, lastName])
   @@index([nationality])
 }

@@ -250,6 +250,17 @@ async function startServer() {
       logger.info(`[MOBILE] Real-time sync: Enabled`);
       logger.info(`[WEBSOCKET] WebSocket: ${serviceResults.websocket ? 'Enabled' : 'Disabled'}`);
     });
+
+    // Handle server errors
+    httpServer.on('error', (error: any) => {
+      if (error.code === 'EADDRINUSE') {
+        logger.error(`[ERROR] Port ${PORT} is already in use. Please stop other instances or use a different port.`);
+        process.exit(1);
+      } else {
+        logger.error('[ERROR] Server error:', error);
+        process.exit(1);
+      }
+    });
   } catch (error) {
     logger.error('Failed to start server:', error);
     process.exit(1);
