@@ -37,6 +37,7 @@ import RecoveryModal from "./RecoveryModal";
 import ValidationProvider, { useValidation } from "./ValidationProvider";
 import ValidationSummary from "./ValidationSummary";
 import { AutoSaveQueue, DEFAULT_AUTOSAVE_CONFIG, type SaveOperation, type SaveResult } from "@/lib/autosaveQueue";
+import sessionManager, { type SessionValidationResult } from "@/lib/onboardingSessionManager";
 
 // 🔧 FIXED: Lazy loading with code splitting for better performance
 // This reduces initial bundle size and loads steps on demand
@@ -103,6 +104,7 @@ const AUTO_SAVE_CONFIG = {
 
 interface OnboardingWizardContentProps {
   forceNewSession?: boolean;
+  urlVillaId?: string;
 }
 
 type StepDataMap = Record<string, StepDataUnion | Record<string, unknown>>;
@@ -868,8 +870,8 @@ const startNewOnboardingSession = async ({
     userId,
   });
 
-  // Immediately store the villa ID to prevent loss
-  storeVillaId(newVillaId, userId);
+  // ⚡ FIXED: Use session manager instead of direct storage
+  sessionManager.setCurrentSession(newVillaId, 'new', userId);
 
   // Update state if component is still mounted
   if (isMountedRef.current) {
@@ -1014,6 +1016,7 @@ const loadExistingSession = async ({
 
 const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
   forceNewSession = false,
+  urlVillaId,
 }) => {
   const { user, isLoaded: userLoaded } = useUser();
   const { getToken, isLoaded: authLoaded } = useAuth();
@@ -2221,34 +2224,98 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
     return summary;
   }, [getStepErrors, warnings, totalSteps, completedSteps]);
 
-  // Track whether villa ID initialization has been attempted
-  const [villaIdInitialized, setVillaIdInitialized] = useState(false);
+  // ⚡ FIXED: Use session manager instead of manual villa ID initialization
+  const [sessionInitialized, setSessionInitialized] = useState(false);
 
-  // Initialize villa ID from localStorage after authentication is ready
+  // Initialize session with proper validation
   useEffect(() => {
-    if (!userLoaded || !authLoaded || !userId) {
+    if (!userLoaded || !authLoaded) {
       return;
     }
 
-    // Only initialize villa ID if we don't have one already
-    if (!villaId) {
-      const { villaId: persistedVillaId } = readPersistedVillaId(userId);
-      if (persistedVillaId) {
-        logger.log("SYSTEM", "INITIALIZING_VILLA_ID_FROM_STORAGE", {
-          villaId: persistedVillaId,
-          userId,
+    let mounted = true;
+
+    const initializeSession = async () => {
+      try {
+        logger.log("SYSTEM", "INITIALIZING_SESSION_WITH_VALIDATION", {
+          urlVillaId,
+          forceNewSession,
+          userId: userId?.substring(0, 8)
         });
-        setVillaId(persistedVillaId);
+
+        // Session validation function
+        const validateSession = async (villaId: string): Promise<SessionValidationResult> => {
+          try {
+            const api = await ensureAuthenticatedApi();
+            const progressResponse = await api.getOnboardingProgress(villaId);
+
+            if (progressResponse.success && progressResponse.data) {
+              return {
+                valid: true,
+                villaId,
+                canRecover: false,
+                shouldCreateNew: false
+              };
+            } else {
+              return {
+                valid: false,
+                villaId,
+                error: 'not_found',
+                canRecover: false,
+                shouldCreateNew: true
+              };
+            }
+          } catch (error) {
+            logger.error("SESSION_VALIDATION", ensureError(error), { villaId });
+            return {
+              valid: false,
+              villaId,
+              error: 'network_error',
+              canRecover: true,
+              shouldCreateNew: false
+            };
+          }
+        };
+
+        // Initialize session manager
+        const session = await sessionManager.initialize({
+          urlVillaId,
+          userId,
+          forceNewSession,
+          validateSession
+        });
+
+        if (mounted) {
+          if (session) {
+            logger.log("SESSION", "VALID_SESSION_FOUND", {
+              villaId: session.villaId,
+              source: session.source
+            });
+            setVillaId(session.villaId);
+          } else {
+            logger.log("SESSION", "NO_VALID_SESSION_READY_FOR_NEW");
+            // Don't set villaId - let the wizard create new session
+          }
+          setSessionInitialized(true);
+        }
+      } catch (error) {
+        logger.error("SESSION_INITIALIZATION", ensureError(error));
+        if (mounted) {
+          setSessionInitialized(true); // Still allow wizard to proceed
+        }
       }
-    }
+    };
 
-    // Mark villa ID initialization as complete
-    setVillaIdInitialized(true);
-  }, [userLoaded, authLoaded, userId, villaId, logger]);
+    initializeSession();
 
-  // Load data on mount - wait for villa ID initialization
+    return () => {
+      mounted = false;
+    };
+  }, [userLoaded, authLoaded, userId, urlVillaId, forceNewSession, logger, ensureAuthenticatedApi]);
+
+  // Load data on mount - wait for session initialization
   useEffect(() => {
-    if (!userLoaded || !authLoaded || !userId || !villaIdInitialized) {
+    if (!userLoaded || !authLoaded || !userId || !sessionInitialized) {
       return;
     }
 
@@ -2270,7 +2337,7 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
         context: "initial_data_load",
       });
     });
-  }, [loadOnboardingData, logger, forceNewSession, isLoading, userLoaded, authLoaded, userId, villaIdInitialized]);
+  }, [loadOnboardingData, logger, forceNewSession, isLoading, userLoaded, authLoaded, userId, sessionInitialized]);
 
   // Enhanced cleanup - Fix memory leaks
   useEffect(() => {
@@ -2839,10 +2906,14 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
 
 const OnboardingWizardUnified: React.FC<OnboardingWizardProps> = ({
   forceNewSession = false,
+  urlVillaId,
 }) => {
   return (
     <ValidationProvider enableRealTimeValidation={true} debounceMs={300}>
-      <OnboardingWizardContent forceNewSession={forceNewSession} />
+      <OnboardingWizardContent
+        forceNewSession={forceNewSession}
+        urlVillaId={urlVillaId}
+      />
     </ValidationProvider>
   );
 };

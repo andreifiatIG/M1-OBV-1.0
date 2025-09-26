@@ -312,6 +312,7 @@ export interface FieldProgressResult {
 
 export interface OnboardingWizardProps {
   forceNewSession?: boolean;
+  urlVillaId?: string;
 }
 
 export interface BackupData {
