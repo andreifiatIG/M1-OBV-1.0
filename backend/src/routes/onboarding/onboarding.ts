@@ -7,6 +7,7 @@ import { validateRequest } from '../../middleware/validation';
 import { onboardingRateLimit, onboardingReadRateLimit, onboardingCompleteRateLimit, autoSaveRateLimit} from '../../middleware/rateLimiting';
 import villaService from "../../services/core/villaService";
 import { createSanitizationMiddleware, createValidationMiddleware, sanitizers, validators } from '../../middleware/sanitization';
+import { normalizeOnboardingFields } from '../../middleware/fieldNormalizer';
 import { cacheMiddleware, CacheDuration, invalidateCache } from '../../middleware/cache';
 import { logger } from '../../utils/logger';
 import {
@@ -632,6 +633,7 @@ router.get('/:villaId',
 router.post('/:villaId/autosave',
   autoSaveRateLimit,
   authenticate,
+  normalizeOnboardingFields,  // CRITICAL: Normalize field names BEFORE sanitization
   createSanitizationMiddleware({
     params: {
       villaId: sanitizers.text,
@@ -771,9 +773,10 @@ router.get('/:villaId/summary',
   });
 
 // Update onboarding step (with cache invalidation and smart rate limiting)
-router.put('/:villaId/step', 
-  smartOnboardingRateLimit, 
-  onboardingStepSanitization, 
+router.post('/:villaId/step',
+  smartOnboardingRateLimit,
+  normalizeOnboardingFields,  // CRITICAL: Normalize field names BEFORE sanitization
+  onboardingStepSanitization,
   onboardingStepValidation, 
   authenticate, 
   validateRequest(updateStepSchema),

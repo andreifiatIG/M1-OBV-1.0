@@ -5,6 +5,21 @@ import { Eye, EyeOff, Shield, AlertCircle, Globe, ExternalLink } from 'lucide-re
 import { StepHandle } from './types';
 import OTAPlatformLogo from '../OTAPlatformLogo';
 
+// Database OTA Credential interface
+interface OTACredential {
+  id?: string;
+  platform: string;
+  propertyId?: string;
+  username?: string;
+  password?: string;
+  apiKey?: string;
+  apiSecret?: string;
+  accountUrl?: string;
+  propertyUrl?: string;
+  listingUrl?: string;
+  isActive: boolean;
+}
+
 interface OTACredentialsStepProps {
   data: any;
   onUpdate: (stepData: any) => void;
@@ -73,11 +88,65 @@ const OTACredentialsStep = forwardRef<StepHandle, OTACredentialsStepProps>((
 ) => {
   const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const formData = { ...defaultFormData, ...data };
+
+  // Platform to enum mapping
+  const platformEnumMap: Record<string, string> = {
+    'bookingCom': 'BOOKING_COM',
+    'airbnb': 'AIRBNB',
+    'expedia': 'EXPEDIA',
+    'vrbo': 'VRBO',
+    'agoda': 'AGODA',
+    'marriottHomesVillas': 'MARRIOTT_HOMES_VILLAS'
+  };
+
+  // Initialize OTA credentials as array
+  const initializeOTACredentials = (): OTACredential[] => {
+    // If data already has the array format, use it
+    if (data && Array.isArray(data)) {
+      return data;
+    }
+
+    // If data has the array format inside otaCredentials property
+    if (data && data.otaCredentials && Array.isArray(data.otaCredentials)) {
+      return data.otaCredentials;
+    }
+
+    // Convert from flat format to array format (backward compatibility)
+    if (data && typeof data === 'object' && !Array.isArray(data)) {
+      const credentials: OTACredential[] = [];
+
+      Object.keys(platformEnumMap).forEach(platformKey => {
+        const isListedField = `${platformKey}Listed`;
+        const isListed = data[isListedField];
+
+        if (isListed) {
+          credentials.push({
+            platform: platformEnumMap[platformKey],
+            propertyId: data[`${platformKey}PropertyId`] || '',
+            username: data[`${platformKey}Username`] || '',
+            password: data[`${platformKey}Password`] || '',
+            apiKey: data[`${platformKey}ApiKey`] || '',
+            apiSecret: data[`${platformKey}ApiSecret`] || '',
+            accountUrl: data[`${platformKey}AccountUrl`] || '',
+            propertyUrl: data[`${platformKey}PropertyUrl`] || '',
+            listingUrl: data[`${platformKey}ListingUrl`] || '',
+            isActive: true
+          });
+        }
+      });
+
+      return credentials;
+    }
+
+    return [];
+  };
+
+  const [otaCredentials, setOtaCredentials] = useState<OTACredential[]>(() => initializeOTACredentials());
 
   const otaPlatforms = [
     {
       key: 'bookingCom',
+      enum: 'BOOKING_COM',
       name: 'Booking.com',
       color: 'bg-blue-600',
       description: 'World\'s largest accommodation booking platform',
@@ -85,6 +154,7 @@ const OTACredentialsStep = forwardRef<StepHandle, OTACredentialsStepProps>((
     },
     {
       key: 'airbnb',
+      enum: 'AIRBNB',
       name: 'Airbnb',
       color: 'bg-red-500',
       description: 'Global marketplace for unique stays and experiences',
@@ -92,6 +162,7 @@ const OTACredentialsStep = forwardRef<StepHandle, OTACredentialsStepProps>((
     },
     {
       key: 'expedia',
+      enum: 'EXPEDIA',
       name: 'Expedia',
       color: 'bg-yellow-600',
       description: 'Online travel booking platform',
@@ -99,6 +170,7 @@ const OTACredentialsStep = forwardRef<StepHandle, OTACredentialsStepProps>((
     },
     {
       key: 'vrbo',
+      enum: 'VRBO',
       name: 'VRBO',
       color: 'bg-blue-500',
       description: 'Vacation rental platform by Expedia Group',
@@ -106,6 +178,7 @@ const OTACredentialsStep = forwardRef<StepHandle, OTACredentialsStepProps>((
     },
     {
       key: 'agoda',
+      enum: 'AGODA',
       name: 'Agoda',
       color: 'bg-purple-600',
       description: 'Asian-focused online travel booking platform',
@@ -113,6 +186,7 @@ const OTACredentialsStep = forwardRef<StepHandle, OTACredentialsStepProps>((
     },
     {
       key: 'marriottHomesVillas',
+      enum: 'MARRIOTT_HOMES_VILLAS',
       name: 'Marriott Homes & Villas',
       color: 'bg-red-700',
       description: 'Luxury vacation rental platform by Marriott',
@@ -120,18 +194,53 @@ const OTACredentialsStep = forwardRef<StepHandle, OTACredentialsStepProps>((
     }
   ];
 
-  const handleInputChange = (field: string, value: string | boolean) => {
-    onUpdate({
-      ...formData,
-      [field]: value
-    });
-    
-    if (errors[field]) {
-      setErrors(prev => ({
-        ...prev,
-        [field]: ''
-      }));
+  // Helper function to find credential for a platform
+  const getCredentialForPlatform = (platformEnum: string): OTACredential | null => {
+    return otaCredentials.find(cred => cred.platform === platformEnum) || null;
+  };
+
+  // Helper function to update a platform's credential
+  const updatePlatformCredential = (platformEnum: string, field: keyof OTACredential, value: any) => {
+    const updatedCredentials = otaCredentials.slice(); // Copy array
+    const existingIndex = updatedCredentials.findIndex(cred => cred.platform === platformEnum);
+
+    if (existingIndex >= 0) {
+      // Update existing credential
+      updatedCredentials[existingIndex] = {
+        ...updatedCredentials[existingIndex],
+        [field]: value
+      };
+    } else {
+      // Create new credential
+      const newCredential: OTACredential = {
+        platform: platformEnum,
+        propertyId: '',
+        username: '',
+        password: '',
+        apiKey: '',
+        apiSecret: '',
+        accountUrl: '',
+        propertyUrl: '',
+        listingUrl: '',
+        isActive: field === 'isActive' ? value : false,
+        [field]: value
+      };
+      updatedCredentials.push(newCredential);
     }
+
+    updateCredentialsAndParent(updatedCredentials);
+  };
+
+  // Helper function to remove a platform's credential
+  const removePlatformCredential = (platformEnum: string) => {
+    const updatedCredentials = otaCredentials.filter(cred => cred.platform !== platformEnum);
+    updateCredentialsAndParent(updatedCredentials);
+  };
+
+  // Helper function to update credentials and notify parent
+  const updateCredentialsAndParent = (updatedCredentials: OTACredential[]) => {
+    setOtaCredentials(updatedCredentials);
+    onUpdate(updatedCredentials);
   };
 
   const togglePasswordVisibility = (platform: string) => {
@@ -145,10 +254,10 @@ const OTACredentialsStep = forwardRef<StepHandle, OTACredentialsStepProps>((
     // Disable validation for development - always return true
     return true;
   };
-  
+
   useImperativeHandle(ref, () => ({
     validate: validateForm,
-    getData: () => formData,
+    getData: () => otaCredentials,
   }));
 
   return (
@@ -167,16 +276,14 @@ const OTACredentialsStep = forwardRef<StepHandle, OTACredentialsStepProps>((
 
       <div className="space-y-6">
         {otaPlatforms.map((platform) => {
-          const listedField = `${platform.key}Listed`;
-          const usernameField = `${platform.key}Username`;
-          const passwordField = `${platform.key}Password`;
-          const isListed = (formData as any)[listedField];
+          const credential = getCredentialForPlatform(platform.enum);
+          const isListed = credential?.isActive || false;
 
           return (
             <div key={platform.key} className="glass-card-white-teal rounded-lg p-6">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center">
-                  <OTAPlatformLogo 
+                  <OTAPlatformLogo
                     platform={platform.key}
                     size={32}
                     className="mr-3"
@@ -191,7 +298,13 @@ const OTACredentialsStep = forwardRef<StepHandle, OTACredentialsStepProps>((
                   <input
                     type="checkbox"
                     checked={isListed}
-                    onChange={(e) => handleInputChange(listedField, e.target.checked)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        updatePlatformCredential(platform.enum, 'isActive', true);
+                      } else {
+                        removePlatformCredential(platform.enum);
+                      }
+                    }}
                     className="sr-only"
                   />
                   <div className={`relative w-12 h-6 rounded-full transition-colors ${
@@ -207,26 +320,26 @@ const OTACredentialsStep = forwardRef<StepHandle, OTACredentialsStepProps>((
                 </label>
               </div>
 
-              {isListed && (
+              {isListed && credential && (
                 <div className="space-y-4 mt-4">
                   {/* Listing URL Field */}
                   <div className="bg-slate-50/60 backdrop-filter backdrop-blur-10 border border-slate-200/40 rounded-lg p-4">
-                    <label className="block text-sm font-medium text-slate-700 mb-2 flex items-center">
+                    <label className="flex items-center text-sm font-medium text-slate-700 mb-2">
                       <ExternalLink className="w-4 h-4 mr-2 text-slate-600" />
                       Listing URL
                     </label>
                     <div className="relative">
                       <input
                         type="url"
-                        value={(formData as any)[`${platform.key}ListingUrl`] as string}
-                        onChange={(e) => handleInputChange(`${platform.key}ListingUrl`, e.target.value)}
+                        value={credential.listingUrl || ''}
+                        onChange={(e) => updatePlatformCredential(platform.enum, 'listingUrl', e.target.value)}
                         placeholder={platform.urlPlaceholder}
                         className="w-full px-4 py-3 bg-white/80 backdrop-filter backdrop-blur-10 border border-teal-400/40 rounded-lg text-slate-800 placeholder-slate-500/80 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white/90 transition-all duration-200"
                       />
-                      {(formData as any)[`${platform.key}ListingUrl`] && (
+                      {credential.listingUrl && (
                         <button
                           type="button"
-                          onClick={() => window.open((formData as any)[`${platform.key}ListingUrl`], '_blank')}
+                          onClick={() => window.open(credential.listingUrl!, '_blank')}
                           className="absolute right-3 top-1/2 transform -translate-y-1/2 text-teal-600 hover:text-teal-700 transition-colors"
                           title="Open listing in new tab"
                         >
@@ -248,8 +361,8 @@ const OTACredentialsStep = forwardRef<StepHandle, OTACredentialsStepProps>((
                       </label>
                       <input
                         type="url"
-                        value={(formData as any)[`${platform.key}AccountUrl`] as string}
-                        onChange={(e) => handleInputChange(`${platform.key}AccountUrl`, e.target.value)}
+                        value={credential.accountUrl || ''}
+                        onChange={(e) => updatePlatformCredential(platform.enum, 'accountUrl', e.target.value)}
                         placeholder="Dashboard/Admin URL"
                         className="w-full px-4 py-3 bg-white/60 backdrop-filter backdrop-blur-10 border border-teal-400/40 rounded-lg text-slate-800 placeholder-slate-500/80 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white/80 transition-all duration-200"
                       />
@@ -262,8 +375,8 @@ const OTACredentialsStep = forwardRef<StepHandle, OTACredentialsStepProps>((
                       </label>
                       <input
                         type="url"
-                        value={(formData as any)[`${platform.key}PropertyUrl`] as string}
-                        onChange={(e) => handleInputChange(`${platform.key}PropertyUrl`, e.target.value)}
+                        value={credential.propertyUrl || ''}
+                        onChange={(e) => updatePlatformCredential(platform.enum, 'propertyUrl', e.target.value)}
                         placeholder="Property management URL"
                         className="w-full px-4 py-3 bg-white/60 backdrop-filter backdrop-blur-10 border border-teal-400/40 rounded-lg text-slate-800 placeholder-slate-500/80 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white/80 transition-all duration-200"
                       />
@@ -279,16 +392,11 @@ const OTACredentialsStep = forwardRef<StepHandle, OTACredentialsStepProps>((
                       </label>
                       <input
                         type="text"
-                        value={(formData as any)[usernameField] as string}
-                        onChange={(e) => handleInputChange(usernameField, e.target.value)}
+                        value={credential.username || ''}
+                        onChange={(e) => updatePlatformCredential(platform.enum, 'username', e.target.value)}
                         placeholder="Enter username or email"
-                        className={`w-full px-4 py-3 bg-white/60 backdrop-filter backdrop-blur-10 border rounded-lg text-slate-800 placeholder-slate-500/80 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white/80 transition-all duration-200 ${
-                          errors[usernameField] ? 'border-red-500 bg-red-50/60' : 'border-teal-400/40'
-                        }`}
+                        className="w-full px-4 py-3 bg-white/60 backdrop-filter backdrop-blur-10 border border-teal-400/40 rounded-lg text-slate-800 placeholder-slate-500/80 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white/80 transition-all duration-200"
                       />
-                      {errors[usernameField] && (
-                        <p className="text-red-400 text-sm mt-1">{errors[usernameField]}</p>
-                      )}
                     </div>
 
                     <div>
@@ -298,12 +406,10 @@ const OTACredentialsStep = forwardRef<StepHandle, OTACredentialsStepProps>((
                       <div className="relative">
                         <input
                           type={showPasswords[platform.key] ? 'text' : 'password'}
-                          value={(formData as any)[passwordField] as string}
-                          onChange={(e) => handleInputChange(passwordField, e.target.value)}
+                          value={credential.password || ''}
+                          onChange={(e) => updatePlatformCredential(platform.enum, 'password', e.target.value)}
                           placeholder="Enter password"
-                          className={`w-full px-4 py-3 bg-white/60 backdrop-filter backdrop-blur-10 border rounded-lg text-slate-800 placeholder-slate-500/80 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white/80 transition-all duration-200 pr-12 ${
-                            errors[passwordField] ? 'border-red-500 bg-red-50/60' : 'border-teal-400/40'
-                          }`}
+                          className="w-full px-4 py-3 bg-white/60 backdrop-filter backdrop-blur-10 border border-teal-400/40 rounded-lg text-slate-800 placeholder-slate-500/80 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white/80 transition-all duration-200 pr-12"
                         />
                         <button
                           type="button"
@@ -317,9 +423,6 @@ const OTACredentialsStep = forwardRef<StepHandle, OTACredentialsStepProps>((
                           )}
                         </button>
                       </div>
-                      {errors[passwordField] && (
-                        <p className="text-red-400 text-sm mt-1">{errors[passwordField]}</p>
-                      )}
                     </div>
                   </div>
 
@@ -331,8 +434,8 @@ const OTACredentialsStep = forwardRef<StepHandle, OTACredentialsStepProps>((
                       </label>
                       <input
                         type="text"
-                        value={(formData as any)[`${platform.key}PropertyId`] as string}
-                        onChange={(e) => handleInputChange(`${platform.key}PropertyId`, e.target.value)}
+                        value={credential.propertyId || ''}
+                        onChange={(e) => updatePlatformCredential(platform.enum, 'propertyId', e.target.value)}
                         placeholder="Property/Hotel ID on platform"
                         className="w-full px-4 py-3 bg-white/60 backdrop-filter backdrop-blur-10 border border-teal-400/40 rounded-lg text-slate-800 placeholder-slate-500/80 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white/80 transition-all duration-200"
                       />
@@ -355,8 +458,8 @@ const OTACredentialsStep = forwardRef<StepHandle, OTACredentialsStepProps>((
                         </label>
                         <input
                           type="text"
-                          value={(formData as any)[`${platform.key}ApiKey`] as string}
-                          onChange={(e) => handleInputChange(`${platform.key}ApiKey`, e.target.value)}
+                          value={credential.apiKey || ''}
+                          onChange={(e) => updatePlatformCredential(platform.enum, 'apiKey', e.target.value)}
                           placeholder="API key for integration"
                           className="w-full px-4 py-3 bg-white/60 backdrop-filter backdrop-blur-10 border border-teal-400/40 rounded-lg text-slate-800 placeholder-slate-500/80 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white/80 transition-all duration-200 font-mono text-sm"
                         />
@@ -369,8 +472,8 @@ const OTACredentialsStep = forwardRef<StepHandle, OTACredentialsStepProps>((
                         <div className="relative">
                           <input
                             type={showPasswords[`${platform.key}ApiSecret`] ? 'text' : 'password'}
-                            value={(formData as any)[`${platform.key}ApiSecret`] as string}
-                            onChange={(e) => handleInputChange(`${platform.key}ApiSecret`, e.target.value)}
+                            value={credential.apiSecret || ''}
+                            onChange={(e) => updatePlatformCredential(platform.enum, 'apiSecret', e.target.value)}
                             placeholder="API secret for integration"
                             className="w-full px-4 py-3 bg-white/60 backdrop-filter backdrop-blur-10 border border-teal-400/40 rounded-lg text-slate-800 placeholder-slate-500/80 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white/80 transition-all duration-200 pr-12 font-mono text-sm"
                           />

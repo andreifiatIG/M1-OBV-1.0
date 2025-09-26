@@ -107,14 +107,13 @@ app.get('/health', (req: Request, res: Response) => {
       'Owner Details',
       'Staff Management',
       'Document Management',
-      'Photo Management', 
+      'Photo Management',
       'Facilities Management',
       'Bank Details (Encrypted)',
       'OTA Credentials (Encrypted)',
       'Onboarding Workflow',
       'Microsoft Graph Integration',
       'SharePoint Document Management',
-      'ElectricSQL Real-time Sync',
       'WebSocket Real-time Updates'
     ],
     services: {
@@ -152,11 +151,11 @@ app.use('/api/users', usersRouter);
 // Sharepoint test route removed during cleanup
 app.use('/api/files', fileServerRouter);
 
-// ElectricSQL WebSocket endpoint
-app.get('/electric', (_req: Request, res: Response) => {
+// Real-time sync status endpoint (WebSocket)
+app.get('/sync/status', (_req: Request, res: Response) => {
   res.json({
-    status: 'ElectricSQL sync endpoint',
-    url: process.env.ELECTRIC_SYNC_URL,
+    status: 'WebSocket sync endpoint',
+    websocket: websocketService.getStatus(),
   });
 });
 
@@ -244,10 +243,8 @@ async function startServer() {
       logger.info(`[SERVER] Server is running on port ${PORT}`);
       logger.info(`[ENV] Environment: ${process.env.NODE_ENV}`);
       logger.info(`[LINK] Health check: http://localhost:${PORT}/health`);
-      logger.info(`[ELECTRIC] ElectricSQL sync: ${process.env.ELECTRIC_SYNC_URL}`);
       logger.info(`[LINK] SharePoint site: ${process.env.SHAREPOINT_SITE_URL}`);
-      logger.info(`[DATABASE]  Database: PostgreSQL with ElectricSQL`);
-      logger.info(`[MOBILE] Real-time sync: Enabled`);
+      logger.info(`[DATABASE] Database: PostgreSQL`);
       logger.info(`[WEBSOCKET] WebSocket: ${serviceResults.websocket ? 'Enabled' : 'Disabled'}`);
     });
 

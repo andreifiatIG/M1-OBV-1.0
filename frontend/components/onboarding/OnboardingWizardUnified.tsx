@@ -1056,7 +1056,8 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
 
   // 🔧 FIXED: Replace old queue management with enhanced AutoSaveQueue system
   // This eliminates race conditions and data loss issues
-  const autoSaveQueue = useRef<AutoSaveQueue>(new AutoSaveQueue(DEFAULT_AUTOSAVE_CONFIG));
+  // Note: AutoSaveQueue will be initialized with villaId in useEffect after villaId is loaded
+  const autoSaveQueue = useRef<AutoSaveQueue | null>(null);
   const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastSaveTimeRef = useRef<number>(0);
   const validationBlockedStepsRef = useRef<Set<number>>(new Set());
@@ -1134,8 +1135,37 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
     stepVersionsRef.current = stepVersions;
   }, [stepVersions]);
 
+  // ⚡ NEW: Initialize AutoSaveQueue with villaId when available
+  useEffect(() => {
+    if (villaId && !autoSaveQueue.current) {
+      autoSaveQueue.current = new AutoSaveQueue(DEFAULT_AUTOSAVE_CONFIG, villaId);
+      logger.log("SYSTEM", "AUTOSAVE_QUEUE_INITIALIZED", { villaId });
+    }
+  }, [villaId, logger]);
+
+  // ⚡ NEW: Merge localStorage data with step data for instant loading
+  const getEnhancedStepData = useCallback((stepNumber: number) => {
+    if (!autoSaveQueue.current) return localStepData[`step${stepNumber}`] || {};
+
+    // Try to get fresh data from localStorage first
+    const localStorageData = autoSaveQueue.current.loadFromLocalStorage(stepNumber);
+    const currentStepData = localStepData[`step${stepNumber}`] || {};
+
+    // Merge localStorage data (most recent) with current step data
+    if (localStorageData && typeof localStorageData === 'object') {
+      logger.log("SYSTEM", "LOADED_FROM_LOCALSTORAGE", {
+        stepNumber,
+        hasData: Object.keys(localStorageData).length > 0
+      });
+      return { ...currentStepData, ...localStorageData };
+    }
+
+    return currentStepData;
+  }, [localStepData, logger]);
+
   const getPendingBatchSize = useCallback(() => {
     // 🔧 FIXED: Use new AutoSaveQueue for pending operations count
+    if (!autoSaveQueue.current) return 0;
     const pendingOperations = autoSaveQueue.current.getPendingOperations();
     const blocked = validationBlockedStepsRef.current;
 
@@ -1620,6 +1650,11 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
   // 🔧 FIXED: Enhanced auto-save with AutoSaveQueue - eliminates race conditions and data loss
   const performAutoSave = useCallback(async (): Promise<boolean> => {
     // Early exit checks
+    if (!autoSaveQueue.current) {
+      logger.log("AUTOSAVE", "QUEUE_NOT_INITIALIZED");
+      return false;
+    }
+
     if (shouldSkipAutoSaveCheck()) {
       logger.log("AUTOSAVE", "SKIP_CHECK_TRIGGERED", {
         hasActiveOperations: autoSaveQueue.current.hasActiveOperations(),
@@ -1732,19 +1767,21 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
       });
 
       // Add all pending step data to the queue
-      Object.entries(localStepData).forEach(([stepKey, stepData]) => {
-        const stepMatch = stepKey.match(/^step(\d+)$/);
-        if (stepMatch && stepData && typeof stepData === 'object') {
-          const stepNumber = parseInt(stepMatch[1], 10);
-          const currentVersion = stepVersionsRef.current[stepNumber] || 1;
-          autoSaveQueue.current.addSaveOperation(
-            stepNumber,
-            stepData as Record<string, unknown>,
-            currentVersion,
-            () => stepVersionsRef.current[stepNumber] || 1 // Always get latest version at execution time
-          );
-        }
-      });
+      if (autoSaveQueue.current) {
+        Object.entries(localStepData).forEach(([stepKey, stepData]) => {
+          const stepMatch = stepKey.match(/^step(\d+)$/);
+          if (stepMatch && stepData && typeof stepData === 'object') {
+            const stepNumber = parseInt(stepMatch[1], 10);
+            const currentVersion = stepVersionsRef.current[stepNumber] || 1;
+            autoSaveQueue.current!.addSaveOperation(
+              stepNumber,
+              stepData as Record<string, unknown>,
+              currentVersion,
+              () => stepVersionsRef.current[stepNumber] || 1 // Always get latest version at execution time
+            );
+          }
+        });
+      }
 
       // Trigger auto-save
       performAutoSave().catch((error) => {
@@ -1825,8 +1862,8 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
         });
       }
 
-      // Only queue for auto-save if we have a villa ID
-      if (villaId) {
+      // Only queue for auto-save if we have a villa ID and queue is initialized
+      if (villaId && autoSaveQueue.current) {
         // 🔧 FIXED: Use AutoSaveQueue for proper deduplication and race condition prevention
         const currentVersion = stepVersionsRef.current[stepNumber] || 1;
         const operationId = autoSaveQueue.current.addSaveOperation(
@@ -1851,14 +1888,14 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
         // 🔧 FIXED: Enhanced timeout logic with AutoSaveQueue awareness
         autoSaveTimeoutRef.current = setTimeout(() => {
           // Check if we have pending operations before processing
-          if (autoSaveQueue.current.hasActiveOperations() && villaId) {
+          if (autoSaveQueue.current?.hasActiveOperations() && villaId) {
             performAutoSave().catch((error) => {
               const err = error instanceof Error ? error : new Error(String(error));
               logger.trackError("AUTOSAVE", err, {
                 context: "timeout_autosave",
                 stepNumber,
                 operationId,
-                queueStatus: autoSaveQueue.current.getQueueStatus(),
+                queueStatus: autoSaveQueue.current?.getQueueStatus(),
               });
             });
           }
@@ -2337,13 +2374,18 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
         }
       }
 
-      // Force save current step before moving
-      const saveSuccessful = await performAutoSave();
-      if (!saveSuccessful) {
-        logger.endStepLoad(currentStep + 1, false);
-        return;
-      }
+      // ⚡ FIXED: Prioritize navigation over saving - don't block user experience
+      // Trigger autosave in background but proceed with navigation immediately
+      performAutoSave().catch((error) => {
+        const err = ensureError(error);
+        logger.trackError(currentStep, err, {
+          context: "handleNext_backgroundSave",
+        });
+        // Show non-blocking toast if save fails
+        toast.error("Save in progress... Your changes are backed up locally.");
+      });
 
+      // Navigate immediately without waiting for save
       if (isMountedRef.current) {
         setCurrentStep((prev) => {
           const next = prev + 1;
@@ -2507,7 +2549,7 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
       ref: (ref: StepHandle | null) => {
         stepRefs.current[currentStep - 1] = ref;
       },
-      data: stepData[`step${currentStep}`] || {},
+      data: getEnhancedStepData(currentStep),
       onUpdate: (data: Record<string, unknown>) =>
         handleUpdate(currentStep, data),
       onNext: handleNext,
@@ -2541,7 +2583,7 @@ const OnboardingWizardContent: React.FC<OnboardingWizardContentProps> = ({
     );
   }, [
     currentStep,
-    stepData,
+    getEnhancedStepData,
     handleUpdate,
     handleNext,
     handlePrevious,

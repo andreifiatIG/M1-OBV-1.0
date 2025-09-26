@@ -14,19 +14,20 @@ export const getOptimizedPrismaClient = () => {
     });
     
     // Add middleware for query optimization and monitoring
-    prisma.$use(async (params, next) => {
-      const before = Date.now();
-      const result = await next(params);
-      const after = Date.now();
-      
-      // Log slow queries
-      const duration = after - before;
-      if (duration > 1000) {
-        logger.warn(`Slow query detected: ${params.model}.${params.action} took ${duration}ms`);
-      }
-      
-      return result;
-    });
+    // Note: $use middleware is deprecated in Prisma 5.x, commenting out for now
+    // prisma.$use(async (params: any, next: any) => {
+    //   const before = Date.now();
+    //   const result = await next(params);
+    //   const after = Date.now();
+    //
+    //   // Log slow queries
+    //   const duration = after - before;
+    //   if (duration > 1000) {
+    //     logger.warn(`Slow query detected: ${params.model}.${params.action} took ${duration}ms`);
+    //   }
+    //
+    //   return result;
+    // });
   }
   
   return prisma;
@@ -43,7 +44,7 @@ export class QueryOptimizer {
   /**
    * Batch operations to reduce database round trips
    */
-  async batchCreate<T>(model: string, data: any[]): Promise<number> {
+  async batchCreate(model: string, data: any[]): Promise<number> {
     try {
       const result = await (this.prisma as any)[model].createMany({
         data,

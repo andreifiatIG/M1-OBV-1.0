@@ -16,8 +16,9 @@ interface StaffMember {
   lastName: string;
   nickname: string;
   position: string;
+  department: string;  // ⚡ ADDED: Missing required field
   employmentType: string;
-  idCard: string;
+  idNumber: string;    // ⚡ FIXED: was idCard
   passportNumber: string;
   nationality: string;
   dateOfBirth: string;
@@ -26,28 +27,31 @@ interface StaffMember {
   phoneCountryCode?: string;
   phoneDialCode?: string;
   maritalStatus: boolean;
-  emergencyContacts: { 
+  emergencyContacts: {
     firstName: string;
-    lastName: string; 
-    phone: string; 
-    phoneCountryCode?: string; 
-    phoneDialCode?: string; 
-    email?: string; 
-    relationship: string; 
+    lastName: string;
+    phone: string;
+    phoneCountryCode?: string;
+    phoneDialCode?: string;
+    email?: string;
+    relationship: string;
   }[];
-  baseSalary: string;
+  salary: string;          // ⚡ FIXED: was baseSalary
+  salaryFrequency: string; // ⚡ ADDED: Missing required field
   currency: string;
   startDate: string;
+  endDate: string;         // ⚡ ADDED: Missing optional field
   numberOfDaySalary: string;
   serviceCharge: string;
   foodAllowance: boolean;
   hasAccommodation: boolean;
+  hasTransport: boolean;   // ⚡ ADDED: Missing field
   transportation: string;
-  healthInsurance: boolean;
-  workInsurance: boolean;
+  hasHealthInsurance: boolean; // ⚡ FIXED: was healthInsurance
+  hasWorkInsurance: boolean;   // ⚡ FIXED: was workInsurance
   totalIncome: string;
   totalNetIncome: string;
-  otherDeduct: string;
+  otherDeductions: string;     // ⚡ FIXED: was otherDeduct
 }
 
 const StaffConfiguratorStep = forwardRef<StepHandle, StaffConfiguratorStepProps>((
@@ -105,8 +109,9 @@ const StaffConfiguratorStep = forwardRef<StepHandle, StaffConfiguratorStepProps>
           });
           return displayName;
         })(),
+        department: staffData.department || '',
         employmentType: staffData.employmentType || 'FULL_TIME',
-        idCard: staffData.idCard || '',
+        idNumber: staffData.idNumber || staffData.idCard || '',  // Support both old and new field names
         passportNumber: staffData.passportNumber || '',
         nationality: staffData.nationality || '',
         dateOfBirth: staffData.dateOfBirth || '',
@@ -115,22 +120,25 @@ const StaffConfiguratorStep = forwardRef<StepHandle, StaffConfiguratorStepProps>
         phoneCountryCode: staffData.phoneCountryCode || '',
         phoneDialCode: staffData.phoneDialCode || '',
         maritalStatus: staffData.maritalStatus || false,
-        emergencyContacts: staffData.emergencyContacts && staffData.emergencyContacts.length > 0 
-          ? staffData.emergencyContacts 
+        emergencyContacts: staffData.emergencyContacts && staffData.emergencyContacts.length > 0
+          ? staffData.emergencyContacts
           : [{ firstName: '', lastName: '', phone: '', phoneCountryCode: '', phoneDialCode: '', email: '', relationship: 'OTHER' }],
-        baseSalary: staffData.baseSalary || '',
+        salary: staffData.salary || staffData.baseSalary || '',  // Support both old and new field names
+        salaryFrequency: staffData.salaryFrequency || 'MONTHLY',
         currency: staffData.currency || 'USD',
         startDate: staffData.startDate || '',
+        endDate: staffData.endDate || '',
         numberOfDaySalary: staffData.numberOfDaySalary || '',
         serviceCharge: staffData.serviceCharge || '',
         foodAllowance: staffData.foodAllowance || false,
         hasAccommodation: staffData.hasAccommodation || false,
+        hasTransport: staffData.hasTransport || false,
         transportation: staffData.transportation || 'Walking Distance',
-        healthInsurance: staffData.healthInsurance || false,
-        workInsurance: staffData.workInsurance || false,
+        hasHealthInsurance: staffData.hasHealthInsurance || staffData.healthInsurance || false,  // Support both old and new field names
+        hasWorkInsurance: staffData.hasWorkInsurance || staffData.workInsurance || false,  // Support both old and new field names
         totalIncome: staffData.totalIncome || '',
         totalNetIncome: staffData.totalNetIncome || '',
-        otherDeduct: staffData.otherDeduct || ''
+        otherDeductions: staffData.otherDeductions || staffData.otherDeduct || ''  // Support both old and new field names
       }));
     }
     
@@ -168,8 +176,9 @@ const StaffConfiguratorStep = forwardRef<StepHandle, StaffConfiguratorStepProps>
           lastName: staffData.lastName || '',
           nickname: staffData.nickname || '',
           position: getPositionDisplayName(staffData.position || ''),
+          department: staffData.department || '',
           employmentType: staffData.employmentType || 'FULL_TIME',
-          idCard: staffData.idCard || '',
+          idNumber: staffData.idNumber || staffData.idCard || '',
           passportNumber: staffData.passportNumber || '',
           nationality: staffData.nationality || '',
           dateOfBirth: staffData.dateOfBirth || '',
@@ -178,22 +187,25 @@ const StaffConfiguratorStep = forwardRef<StepHandle, StaffConfiguratorStepProps>
           phoneCountryCode: staffData.phoneCountryCode || '',
           phoneDialCode: staffData.phoneDialCode || '',
           maritalStatus: staffData.maritalStatus || false,
-          emergencyContacts: staffData.emergencyContacts && staffData.emergencyContacts.length > 0 
-            ? staffData.emergencyContacts 
+          emergencyContacts: staffData.emergencyContacts && staffData.emergencyContacts.length > 0
+            ? staffData.emergencyContacts
             : [{ firstName: '', lastName: '', phone: '', phoneCountryCode: '', phoneDialCode: '', email: '', relationship: 'OTHER' }],
-          baseSalary: staffData.baseSalary || '',
+          salary: staffData.salary || staffData.baseSalary || '',
+          salaryFrequency: staffData.salaryFrequency || 'MONTHLY',
           currency: staffData.currency || 'USD',
           startDate: staffData.startDate || '',
+          endDate: staffData.endDate || '',
           numberOfDaySalary: staffData.numberOfDaySalary || '',
           serviceCharge: staffData.serviceCharge || '',
           foodAllowance: staffData.foodAllowance || false,
           hasAccommodation: staffData.hasAccommodation || false,
+          hasTransport: staffData.hasTransport || false,
           transportation: staffData.transportation || 'Walking Distance',
-          healthInsurance: staffData.healthInsurance || false,
-          workInsurance: staffData.workInsurance || false,
+          hasHealthInsurance: staffData.hasHealthInsurance || staffData.healthInsurance || false,
+          hasWorkInsurance: staffData.hasWorkInsurance || staffData.workInsurance || false,
           totalIncome: staffData.totalIncome || '',
           totalNetIncome: staffData.totalNetIncome || '',
-          otherDeduct: staffData.otherDeduct || ''
+          otherDeductions: staffData.otherDeductions || staffData.otherDeduct || ''
         };
       });
       
@@ -355,8 +367,9 @@ const StaffConfiguratorStep = forwardRef<StepHandle, StaffConfiguratorStepProps>
       lastName: '',
       nickname: '',
       position: '',
+      department: '',
       employmentType: 'FULL_TIME',
-      idCard: '',
+      idNumber: '',
       passportNumber: '',
       nationality: '',
       dateOfBirth: '',
@@ -366,19 +379,22 @@ const StaffConfiguratorStep = forwardRef<StepHandle, StaffConfiguratorStepProps>
       phoneDialCode: '',
       maritalStatus: false,
       emergencyContacts: [{ firstName: '', lastName: '', phone: '', phoneCountryCode: '', phoneDialCode: '', email: '', relationship: 'OTHER' }],
-      baseSalary: '',
+      salary: '',
+      salaryFrequency: 'MONTHLY',
       currency: 'USD',
       startDate: '',
+      endDate: '',
       numberOfDaySalary: '',
       serviceCharge: '',
       foodAllowance: false,
       hasAccommodation: false,
+      hasTransport: false,
       transportation: 'Walking Distance',
-      healthInsurance: false,
-      workInsurance: false,
+      hasHealthInsurance: false,
+      hasWorkInsurance: false,
       totalIncome: '',
       totalNetIncome: '',
-      otherDeduct: ''
+      otherDeductions: ''
     }];
     setStaffMembers(newStaffMembers);
     updateDataWithEnumPositions(newStaffMembers);
@@ -703,11 +719,30 @@ const StaffConfiguratorStep = forwardRef<StepHandle, StaffConfiguratorStepProps>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">ID Card Number</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Department</label>
+                  <select
+                    value={member.department}
+                    onChange={(e) => updateStaffMember(member.id, 'department', e.target.value)}
+                    className="w-full px-4 py-3 bg-white/60 backdrop-filter backdrop-blur-10 border border-teal-400/40 rounded-lg text-slate-800 placeholder-slate-500/80 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white/80 transition-all duration-200"
+                  >
+                    <option value="">Select Department</option>
+                    <option value="HOUSEKEEPING">Housekeeping</option>
+                    <option value="MAINTENANCE">Maintenance</option>
+                    <option value="FOOD_SERVICE">Food Service</option>
+                    <option value="GUEST_SERVICES">Guest Services</option>
+                    <option value="SECURITY">Security</option>
+                    <option value="MANAGEMENT">Management</option>
+                    <option value="ADMINISTRATION">Administration</option>
+                    <option value="OTHER">Other</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">ID Number</label>
                   <input
                     type="text"
-                    value={member.idCard}
-                    onChange={(e) => updateStaffMember(member.id, 'idCard', e.target.value)}
+                    value={member.idNumber}
+                    onChange={(e) => updateStaffMember(member.id, 'idNumber', e.target.value)}
                     className="w-full px-4 py-3 bg-white/60 backdrop-filter backdrop-blur-10 border border-teal-400/40 rounded-lg text-slate-800 placeholder-slate-500/80 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white/80 transition-all duration-200"
                   />
                 </div>
@@ -1118,6 +1153,16 @@ const StaffConfiguratorStep = forwardRef<StepHandle, StaffConfiguratorStepProps>
                       className="w-full px-4 py-3 bg-white/60 backdrop-filter backdrop-blur-10 border border-teal-400/40 rounded-lg text-slate-800 placeholder-slate-500/80 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white/80 transition-all duration-200"
                     />
                   </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">End Date (Optional)</label>
+                    <input
+                      type="date"
+                      value={member.endDate}
+                      onChange={(e) => updateStaffMember(member.id, 'endDate', e.target.value)}
+                      className="w-full px-4 py-3 bg-white/60 backdrop-filter backdrop-blur-10 border border-teal-400/40 rounded-lg text-slate-800 placeholder-slate-500/80 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white/80 transition-all duration-200"
+                    />
+                  </div>
                   
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">Number of Day Salary</label>
@@ -1135,12 +1180,12 @@ const StaffConfiguratorStep = forwardRef<StepHandle, StaffConfiguratorStepProps>
                 <div className="space-y-6">
                   <h5 className="text-md font-semibold text-slate-800 pb-2 border-b border-slate-200">Salary & Compensation</h5>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Base Salary</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Salary</label>
                     <div className="flex gap-2">
                       <input
                         type="number"
-                        value={member.baseSalary}
-                        onChange={(e) => updateStaffMember(member.id, 'baseSalary', e.target.value)}
+                        value={member.salary}
+                        onChange={(e) => updateStaffMember(member.id, 'salary', e.target.value)}
                         className="flex-1 px-4 py-3 bg-white/60 backdrop-filter backdrop-blur-10 border border-teal-400/40 rounded-lg text-slate-800 placeholder-slate-500/80 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white/80 transition-all duration-200"
                         placeholder="0.00"
                       />
@@ -1156,6 +1201,21 @@ const StaffConfiguratorStep = forwardRef<StepHandle, StaffConfiguratorStepProps>
                         ))}
                       </select>
                     </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Salary Frequency</label>
+                    <select
+                      value={member.salaryFrequency}
+                      onChange={(e) => updateStaffMember(member.id, 'salaryFrequency', e.target.value)}
+                      className="w-full px-4 py-3 bg-white/60 backdrop-filter backdrop-blur-10 border border-teal-400/40 rounded-lg text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white/80 transition-all duration-200"
+                    >
+                      <option value="HOURLY">Hourly</option>
+                      <option value="DAILY">Daily</option>
+                      <option value="WEEKLY">Weekly</option>
+                      <option value="MONTHLY">Monthly</option>
+                      <option value="YEARLY">Yearly</option>
+                    </select>
                   </div>
 
 
@@ -1226,8 +1286,8 @@ const StaffConfiguratorStep = forwardRef<StepHandle, StaffConfiguratorStepProps>
                       </div>
                       <input
                         type="number"
-                        value={member.otherDeduct}
-                        onChange={(e) => updateStaffMember(member.id, 'otherDeduct', e.target.value)}
+                        value={member.otherDeductions}
+                        onChange={(e) => updateStaffMember(member.id, 'otherDeductions', e.target.value)}
                         className="w-full pl-8 pr-4 py-3 bg-white/60 backdrop-filter backdrop-blur-10 border border-teal-400/40 rounded-lg text-slate-800 placeholder-slate-500/80 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white/80 transition-all duration-200"
                         placeholder="0.00"
                       />
@@ -1244,7 +1304,7 @@ const StaffConfiguratorStep = forwardRef<StepHandle, StaffConfiguratorStepProps>
                 </h4>
                 
                 <div className="space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
                     <div>
                       <label className="block text-sm font-medium text-slate-700 mb-2">Food Allowance</label>
                       <div className="flex items-center p-4 bg-white/60 backdrop-filter backdrop-blur-10 border border-teal-400/40 rounded-lg hover:bg-white/80 transition-all duration-200">
@@ -1279,8 +1339,8 @@ const StaffConfiguratorStep = forwardRef<StepHandle, StaffConfiguratorStepProps>
                         <input
                           type="checkbox"
                           id={`health-${member.id}`}
-                          checked={member.healthInsurance}
-                          onChange={(e) => updateStaffMember(member.id, 'healthInsurance', e.target.checked)}
+                          checked={member.hasHealthInsurance}
+                          onChange={(e) => updateStaffMember(member.id, 'hasHealthInsurance', e.target.checked)}
                           className="rounded border-teal-400/40 text-teal-600 focus:ring-teal-500 focus:ring-2"
                         />
                         <label htmlFor={`health-${member.id}`} className="ml-3 text-sm text-slate-700 cursor-pointer">Covered</label>
@@ -1293,11 +1353,25 @@ const StaffConfiguratorStep = forwardRef<StepHandle, StaffConfiguratorStepProps>
                         <input
                           type="checkbox"
                           id={`work-${member.id}`}
-                          checked={member.workInsurance}
-                          onChange={(e) => updateStaffMember(member.id, 'workInsurance', e.target.checked)}
+                          checked={member.hasWorkInsurance}
+                          onChange={(e) => updateStaffMember(member.id, 'hasWorkInsurance', e.target.checked)}
                           className="rounded border-teal-400/40 text-teal-600 focus:ring-teal-500 focus:ring-2"
                         />
                         <label htmlFor={`work-${member.id}`} className="ml-3 text-sm text-slate-700 cursor-pointer">Covered</label>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">Transportation</label>
+                      <div className="flex items-center p-4 bg-white/60 backdrop-filter backdrop-blur-10 border border-teal-400/40 rounded-lg hover:bg-white/80 transition-all duration-200">
+                        <input
+                          type="checkbox"
+                          id={`transport-${member.id}`}
+                          checked={member.hasTransport}
+                          onChange={(e) => updateStaffMember(member.id, 'hasTransport', e.target.checked)}
+                          className="rounded border-teal-400/40 text-teal-600 focus:ring-teal-500 focus:ring-2"
+                        />
+                        <label htmlFor={`transport-${member.id}`} className="ml-3 text-sm text-slate-700 cursor-pointer">Provided</label>
                       </div>
                     </div>
                   </div>

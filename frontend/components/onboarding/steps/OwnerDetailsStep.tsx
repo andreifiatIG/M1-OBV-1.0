@@ -406,7 +406,7 @@ const OwnerDetailsStep = React.memo(forwardRef<StepHandle, OwnerDetailsStepProps
                 </label>
                 {/* <SkipButton
                   stepNumber={2}
-                  fieldName="villaCompanyName"
+                  fieldName="companyName"
                   type="field"
                   size="sm"
                 /> */}

@@ -859,115 +859,57 @@ export class ClientApiClient {
   async saveOnboardingStep(villaId: string, step: number, data: Record<string, unknown>, options: { version?: number } = {}) {
     const typedStep: OnboardingStep = assertOnboardingStep(step);
 
-    const shouldApplyMapping = typedStep === 1;
-
+    // ⚡ SIMPLIFIED: Apply standard processing for all steps with unified field names
     let normalizedPayload: Record<string, unknown>;
-    if (shouldApplyMapping) {
-      try {
-        // 🔧 FIXED: Enhanced field transformation for step 1 to handle frontend field names
-        // Transform frontend field names to backend format before processing
-        const frontendData = data as any;
-        const backendTransformed = {
-          // Core villa information
-          villaName: frontendData.villaName,
-
-          // Address fields - map frontend names to backend names
-          address: frontendData.address || frontendData.villaAddress,
-          city: frontendData.city || frontendData.villaCity,
-          country: frontendData.country || frontendData.villaCountry,
-          zipCode: frontendData.zipCode || frontendData.villaPostalCode,
-
-          // Property size fields - map frontend names to backend names
-          propertySize: frontendData.propertySize || frontendData.villaArea,
-          plotSize: frontendData.plotSize || frontendData.landArea,
-
-          // Numeric fields (ensure proper type conversion)
-          bedrooms: frontendData.bedrooms !== undefined ? Number(frontendData.bedrooms) : undefined,
-          bathrooms: frontendData.bathrooms !== undefined ? Number(frontendData.bathrooms) : undefined,
-          maxGuests: frontendData.maxGuests !== undefined ? Number(frontendData.maxGuests) : undefined,
-          yearBuilt: frontendData.yearBuilt !== undefined ? Number(frontendData.yearBuilt) : undefined,
-          renovationYear: frontendData.renovationYear !== undefined ? Number(frontendData.renovationYear) : undefined,
-
-          // Coordinate fields
-          latitude: frontendData.latitude !== undefined ? Number(frontendData.latitude) : undefined,
-          longitude: frontendData.longitude !== undefined ? Number(frontendData.longitude) : undefined,
-
-          // Handle googleCoordinates field
-          googleCoordinates: frontendData.googleCoordinates,
-
-          // Text fields
-          propertyType: frontendData.propertyType,
-          villaStyle: frontendData.villaStyle,
-          description: frontendData.description,
-          shortDescription: frontendData.shortDescription,
-          locationType: frontendData.locationType,
-
-          // URL fields
-          googleMapsLink: frontendData.googleMapsLink,
-          oldRatesCardLink: frontendData.oldRatesCardLink,
-          iCalCalendarLink: frontendData.iCalCalendarLink,
-          propertyEmail: frontendData.propertyEmail,
-          propertyWebsite: frontendData.propertyWebsite,
-        };
-
-        // Remove undefined values to prevent issues
-        const cleanedData = Object.fromEntries(
-          Object.entries(backendTransformed).filter(([_, value]) => value !== undefined)
-        );
-
-        const transformedData = mapOnboardingDataToBackend(step, cleanedData);
-        const canonical = canonicalizeStepData(typedStep, transformedData);
-        normalizedPayload = validateStepPayload(typedStep, canonical, false);
-
-        if (
-          process.env.NODE_ENV === 'development' &&
-          process.env.NEXT_PUBLIC_DEBUG === 'true'
-        ) {
-          console.log('🗺️ API Client Field Transformation:', {
-            originalData: data,
-            backendTransformed: cleanedData,
-            finalPayload: normalizedPayload
-          });
-          debugFieldMapping(
-            data,
-            normalizedPayload,
-            `API Client Step ${step} Save Transform`
-          );
-        }
-      } catch (error) {
-        console.warn(
-          'Failed to normalize onboarding payload, sending raw data as fallback',
-          {
-            step,
-            error,
-          }
-        );
-        normalizedPayload = data;
-      }
+    try {
+      // Frontend field names now match database field names exactly
+      const transformedData = mapOnboardingDataToBackend(step, data);
+      const canonical = canonicalizeStepData(typedStep, transformedData);
+      normalizedPayload = validateStepPayload(typedStep, canonical, false);
 
       if (
-        normalizedPayload &&
-        typeof normalizedPayload === 'object' &&
-        Object.keys(normalizedPayload).length === 0
+        process.env.NODE_ENV === 'development' &&
+        process.env.NEXT_PUBLIC_DEBUG === 'true'
       ) {
-        normalizedPayload = data;
+        console.log('⚡ API Client Unified Processing:', {
+          step,
+          originalData: data,
+          transformedData,
+          canonical,
+          finalPayload: normalizedPayload
+        });
       }
-    } else {
+    } catch (error) {
+      console.warn(
+        'Failed to normalize onboarding payload, using raw data as fallback',
+        {
+          step,
+          error,
+        }
+      );
       normalizedPayload = data;
     }
 
-    const payloadForRequest = shouldApplyMapping
-      ? (() => {
-          const completionCheck = safeValidateStepPayload(
-            typedStep,
-            normalizedPayload,
-            true
-          );
-          return completionCheck.success
-            ? completionCheck.data
-            : normalizedPayload;
-        })()
-      : normalizedPayload;
+    // Fallback to raw data if normalized payload is empty
+    if (
+      normalizedPayload &&
+      typeof normalizedPayload === 'object' &&
+      Object.keys(normalizedPayload).length === 0
+    ) {
+      normalizedPayload = data;
+    }
+
+    // Apply final validation for completion check
+    const payloadForRequest = (() => {
+      const completionCheck = safeValidateStepPayload(
+        typedStep,
+        normalizedPayload,
+        true
+      );
+      return completionCheck.success
+        ? completionCheck.data
+        : normalizedPayload;
+    })();
 
     const requestData = payloadForRequest;
 

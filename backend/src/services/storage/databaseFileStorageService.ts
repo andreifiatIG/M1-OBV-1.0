@@ -198,7 +198,7 @@ class DatabaseFileStorageService {
       }
 
       return {
-        content,
+        content: Buffer.from(content),
         fileName: document.fileName,
         mimeType: document.mimeType,
         size: content.length
@@ -237,7 +237,7 @@ class DatabaseFileStorageService {
       }
 
       return {
-        content,
+        content: Buffer.from(content),
         fileName: thumbnail ? `thumb_${photo.fileName}` : photo.fileName,
         mimeType: photo.mimeType,
         size: content.length

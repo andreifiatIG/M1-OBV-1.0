@@ -1263,8 +1263,8 @@ export function mapStaffDataToBackend(frontendData: StaffFrontendData) {
       (frontendData.transportation &&
         frontendData.transportation !== "Walking Distance") ||
       false,
-    hasHealthInsurance: frontendData.healthInsurance || false,
-    hasWorkInsurance: frontendData.workInsurance || false,
+    hasHealthInsurance: frontendData.hasHealthInsurance || frontendData.healthInsurance || false,
+    hasWorkInsurance: frontendData.hasWorkInsurance || frontendData.workInsurance || false,
     foodAllowance: frontendData.foodAllowance || false,
     transportation: frontendData.transportation || null,
 

@@ -1100,7 +1100,7 @@ router.post(
       const normalizedCategory = String(rawFacilityCategory).replace(/-/g, '_');
       const facilityCategory = Object.values(FacilityCategory).includes(normalizedCategory as FacilityCategory)
         ? (normalizedCategory as FacilityCategory)
-        : FacilityCategory.other;
+        : FacilityCategory.OTHER;
 
       if (rawFacilityCategory !== facilityCategory) {
         logger.info(`Category format conversion: "${rawFacilityCategory}" → "${facilityCategory}"`);

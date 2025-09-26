@@ -17,12 +17,12 @@
   "dependencies": {
     "@azure/storage-blob": "^12.17.0",
     "@clerk/backend": "^2.9.4",
-    "@clerk/clerk-sdk-node": "^4.13.23",
+    "@clerk/clerk-sdk-node": "^5.1.6",
     "@microsoft/microsoft-graph-client": "^3.0.7",
     "@novu/api": "^1.6.0",
     "@novu/js": "^3.8.1",
     "@novu/react": "^3.8.1",
-    "@prisma/client": "^5.19.0",
+    "@prisma/client": "^6.16.2",
     "@types/dompurify": "^3.0.5",
     "@types/jsdom": "^21.1.7",
     "@types/nodemailer": "^7.0.1",
@@ -62,7 +62,7 @@
     "@types/node": "^20.11.24",
     "@types/sharp": "^0.31.1",
     "@types/uuid": "^9.0.8",
-    "prisma": "^5.19.0",
+    "prisma": "^6.16.2",
     "tsx": "^4.7.1",
     "typescript": "^5.3.3"
   },

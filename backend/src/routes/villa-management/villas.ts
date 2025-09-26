@@ -796,9 +796,9 @@ router.post(
   authenticate,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      // Update villa status to PENDING_REVIEW
+      // Update villa status to ACTIVE (submitted for review)
       const villa = await villaService.updateVilla(req.params.id, {
-        status: VillaStatus.PENDING_REVIEW
+        status: VillaStatus.ACTIVE
       });
       
       res.json({

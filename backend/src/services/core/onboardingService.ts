@@ -739,7 +739,7 @@ class OnboardingService {
         villaId,
         step: String(step),
         autoSave: String(isAutoSave === true),
-        operationId: operationMeta.operationId,
+        operationId: operationMeta.operationId || 'unknown',
       });
 
       const stepProgress = await this.ensureStepProgressRecord(villaId, typedStep);
@@ -1006,7 +1006,7 @@ class OnboardingService {
         }
 
         // Update onboarding session counters
-        await this.updateSessionCounters(villaId);
+        await this.updateSessionCounters(villaId, userId);
       }
     } catch (error) {
       logger.error('Error updating enhanced progress tracking:', error);
@@ -1016,8 +1016,9 @@ class OnboardingService {
 
   /**
    * Update session counters
+   * Fixed: Now accepts userId parameter to track real user instead of hardcoded 'system'
    */
-  private async updateSessionCounters(villaId: string) {
+  private async updateSessionCounters(villaId: string, userId?: string) {
     try {
       const steps = await prisma.onboardingStepProgress.findMany({
         where: { villaId },
@@ -1026,16 +1027,24 @@ class OnboardingService {
 
       const stepsCompleted = steps.filter(s => s.status === 'COMPLETED').length;
       const stepsSkipped = steps.filter(s => s.status === 'SKIPPED').length;
-      const fieldsCompleted = steps.reduce((sum, step) => 
+      const fieldsCompleted = steps.reduce((sum, step) =>
         sum + step.fields.filter(f => f.status === 'COMPLETED').length, 0);
-      const fieldsSkipped = steps.reduce((sum, step) => 
+      const fieldsSkipped = steps.reduce((sum, step) =>
         sum + step.fields.filter(f => f.isSkipped).length, 0);
 
       const currentStep = Math.max(1, stepsCompleted + stepsSkipped + 1);
 
+      // Get existing session to preserve userId if not provided
+      const existingSession = await prisma.onboardingSession.findUnique({
+        where: { villaId }
+      });
+
+      const sessionUserId = userId || existingSession?.userId || 'system';
+
       await prisma.onboardingSession.upsert({
         where: { villaId },
         update: {
+          userId: sessionUserId,  // Update with real userId if provided
           currentStep,
           stepsCompleted,
           stepsSkipped,
@@ -1045,7 +1054,7 @@ class OnboardingService {
         },
         create: {
           villaId,
-          userId: 'system',
+          userId: sessionUserId,  // Use real userId instead of hardcoded 'system'
           currentStep,
           totalSteps: this.TOTAL_STEPS,
           stepsCompleted,

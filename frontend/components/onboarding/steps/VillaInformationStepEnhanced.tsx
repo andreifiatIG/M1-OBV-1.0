@@ -11,25 +11,27 @@ interface VillaInformationStepProps {
   onUpdate: (stepData: any) => void;
 }
 
+// ⚡ UNIFIED FIELD NAMES - Now match database schema exactly
 const defaultFormData = {
+  // Core villa information - using database field names
   villaName: '',
-  villaAddress: '',
-  villaCity: '',
-  villaCountry: '',  // No default country - will be loaded from backend
-  villaPostalCode: '',
+  address: '',      // was: address
+  city: '',         // was: city
+  country: '',      // was: country
+  zipCode: '',      // was: zipCode
   bedrooms: '',
   bathrooms: '',
   maxGuests: '',
   propertyType: '',
-  landArea: '',
-  villaArea: '',
+  plotSize: '',     // was: plotSize
+  propertySize: '', // was: propertySize
   latitude: '',
   longitude: '',
   locationType: '',
   googleMapsLink: '',
   oldRatesCardLink: '',
   iCalCalendarLink: '',
-  // New fields from database schema
+  // Additional database fields
   yearBuilt: '',
   renovationYear: '',
   villaStyle: '',
@@ -158,9 +160,9 @@ const VillaInformationStepEnhanced = React.memo(forwardRef<StepHandle, VillaInfo
 
   const fieldValidators = useMemo<Partial<Record<FormFieldKey, (value: string) => string | null>>>(() => ({
     villaName: (value: string) => (value.trim() ? null : 'Villa name is required'),
-    villaAddress: (value: string) => (value.trim() ? null : 'Villa address is required'),
-    villaCity: (value: string) => (value.trim() ? null : 'City is required'),
-    villaCountry: (value: string) => (value.trim() ? null : 'Country is required'),
+    address: (value: string) => (value.trim() ? null : 'Villa address is required'),
+    city: (value: string) => (value.trim() ? null : 'City is required'),
+    country: (value: string) => (value.trim() ? null : 'Country is required'),
     propertyType: (value: string) => (value ? null : 'Property type is required'),
     bedrooms: (value: string) => {
       const trimmed = value.trim();
@@ -289,8 +291,13 @@ const VillaInformationStepEnhanced = React.memo(forwardRef<StepHandle, VillaInfo
       bedrooms: numOrUndef(formData.bedrooms),
       bathrooms: numOrUndef(formData.bathrooms),
       maxGuests: numOrUndef(formData.maxGuests),
-      landArea: numOrUndef(formData.landArea),
-      villaArea: numOrUndef(formData.villaArea),
+      plotSize: numOrUndef(formData.plotSize),
+      propertySize: numOrUndef(formData.propertySize),
+      // ⚡ FIXED: Convert missing numeric fields that were not being saved
+      latitude: numOrUndef(formData.latitude),
+      longitude: numOrUndef(formData.longitude),
+      yearBuilt: numOrUndef(formData.yearBuilt),
+      renovationYear: numOrUndef(formData.renovationYear),
     };
   }, [formData]);
 
@@ -377,64 +384,64 @@ const VillaInformationStepEnhanced = React.memo(forwardRef<StepHandle, VillaInfo
             </div>
 
             <div className="md:col-span-2">
-              <label htmlFor={getFieldId('villaAddress')} className="block text-sm font-medium text-slate-700 mb-2">
+              <label htmlFor={getFieldId('address')} className="block text-sm font-medium text-slate-700 mb-2">
                 Address *
               </label>
               <textarea
-                id={getFieldId('villaAddress')}
-                value={formData.villaAddress}
-                onChange={(e) => handleInputChange('villaAddress', e.target.value)}
-                onBlur={() => handleBlur('villaAddress')}
+                id={getFieldId('address')}
+                value={formData.address}
+                onChange={(e) => handleInputChange('address', e.target.value)}
+                onBlur={() => handleBlur('address')}
                 placeholder="Enter full property address"
                 rows={3}
-                aria-invalid={Boolean(errors.villaAddress)}
-                aria-describedby={errors.villaAddress ? getErrorId('villaAddress') : undefined}
-                className={`w-full px-4 py-3 bg-white/60 backdrop-filter backdrop-blur-10 border border-teal-400/40 rounded-lg text-slate-800 placeholder-slate-500/80 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white/80 transition-all duration-200 ${errors.villaAddress ? 'border-red-400' : ''}`}
+                aria-invalid={Boolean(errors.address)}
+                aria-describedby={errors.address ? getErrorId('address') : undefined}
+                className={`w-full px-4 py-3 bg-white/60 backdrop-filter backdrop-blur-10 border border-teal-400/40 rounded-lg text-slate-800 placeholder-slate-500/80 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white/80 transition-all duration-200 ${errors.address ? 'border-red-400' : ''}`}
               />
-              {errors.villaAddress && (
-                <p id={getErrorId('villaAddress')} role="alert" aria-live="assertive" className="text-red-400 text-sm mt-1">
-                  {errors.villaAddress}
+              {errors.address && (
+                <p id={getErrorId('address')} role="alert" aria-live="assertive" className="text-red-400 text-sm mt-1">
+                  {errors.address}
                 </p>
               )}
             </div>
 
             <div>
-              <label htmlFor={getFieldId('villaCity')} className="block text-sm font-medium text-slate-700 mb-2">
+              <label htmlFor={getFieldId('city')} className="block text-sm font-medium text-slate-700 mb-2">
                 City *
               </label>
               <input
-                id={getFieldId('villaCity')}
+                id={getFieldId('city')}
                 type="text"
-                value={formData.villaCity}
-                onChange={(e) => handleInputChange('villaCity', e.target.value)}
-                onBlur={() => handleBlur('villaCity')}
+                value={formData.city}
+                onChange={(e) => handleInputChange('city', e.target.value)}
+                onBlur={() => handleBlur('city')}
                 placeholder="Enter city"
-                aria-invalid={Boolean(errors.villaCity)}
-                aria-describedby={errors.villaCity ? getErrorId('villaCity') : undefined}
+                aria-invalid={Boolean(errors.city)}
+                aria-describedby={errors.city ? getErrorId('city') : undefined}
                 className={`w-full px-4 py-3 form-input-white-teal ${
-                  errors.villaCity ? 'error' : ''
+                  errors.city ? 'error' : ''
                 }`}
               />
-              {errors.villaCity && (
-                <p id={getErrorId('villaCity')} role="alert" aria-live="assertive" className="text-red-400 text-sm mt-1">
-                  {errors.villaCity}
+              {errors.city && (
+                <p id={getErrorId('city')} role="alert" aria-live="assertive" className="text-red-400 text-sm mt-1">
+                  {errors.city}
                 </p>
               )}
             </div>
 
             <div>
-              <label htmlFor={getFieldId('villaCountry')} className="block text-sm font-medium text-slate-700 mb-2">
+              <label htmlFor={getFieldId('country')} className="block text-sm font-medium text-slate-700 mb-2">
                 Country *
               </label>
               <select
-                id={getFieldId('villaCountry')}
-                value={formData.villaCountry}
-                onChange={(e) => handleInputChange('villaCountry', e.target.value)}
-                onBlur={() => handleBlur('villaCountry')}
-                aria-invalid={Boolean(errors.villaCountry)}
-                aria-describedby={errors.villaCountry ? getErrorId('villaCountry') : undefined}
+                id={getFieldId('country')}
+                value={formData.country}
+                onChange={(e) => handleInputChange('country', e.target.value)}
+                onBlur={() => handleBlur('country')}
+                aria-invalid={Boolean(errors.country)}
+                aria-describedby={errors.country ? getErrorId('country') : undefined}
                 className={`w-full px-4 py-3 form-input-white-teal ${
-                  errors.villaCountry ? 'error' : ''
+                  errors.country ? 'error' : ''
                 }`}
               >
                 <option value="">Select Country</option>
@@ -447,32 +454,32 @@ const VillaInformationStepEnhanced = React.memo(forwardRef<StepHandle, VillaInfo
                   );
                 })}
               </select>
-              {errors.villaCountry && (
-                <p id={getErrorId('villaCountry')} role="alert" aria-live="assertive" className="text-red-400 text-sm mt-1">
-                  {errors.villaCountry}
+              {errors.country && (
+                <p id={getErrorId('country')} role="alert" aria-live="assertive" className="text-red-400 text-sm mt-1">
+                  {errors.country}
                 </p>
               )}
             </div>
             
             <div>
-              <label htmlFor={getFieldId('villaPostalCode')} className="block text-sm font-medium text-slate-700 mb-2">
+              <label htmlFor={getFieldId('zipCode')} className="block text-sm font-medium text-slate-700 mb-2">
                 Postal Code
               </label>
               <input
-                id={getFieldId('villaPostalCode')}
+                id={getFieldId('zipCode')}
                 type="text"
-                value={formData.villaPostalCode}
-                onChange={(e) => handleInputChange('villaPostalCode', e.target.value)}
+                value={formData.zipCode}
+                onChange={(e) => handleInputChange('zipCode', e.target.value)}
                 placeholder="Enter postal code"
-                aria-invalid={Boolean(errors.villaPostalCode)}
-                aria-describedby={errors.villaPostalCode ? getErrorId('villaPostalCode') : undefined}
+                aria-invalid={Boolean(errors.zipCode)}
+                aria-describedby={errors.zipCode ? getErrorId('zipCode') : undefined}
                 className={`w-full px-4 py-3 form-input-white-teal ${
-                  errors.villaPostalCode ? 'error' : ''
+                  errors.zipCode ? 'error' : ''
                 }`}
               />
-              {errors.villaPostalCode && (
-                <p id={getErrorId('villaPostalCode')} role="alert" aria-live="assertive" className="text-red-400 text-sm mt-1">
-                  {errors.villaPostalCode}
+              {errors.zipCode && (
+                <p id={getErrorId('zipCode')} role="alert" aria-live="assertive" className="text-red-400 text-sm mt-1">
+                  {errors.zipCode}
                 </p>
               )}
             </div>
@@ -567,49 +574,49 @@ const VillaInformationStepEnhanced = React.memo(forwardRef<StepHandle, VillaInfo
           <h3 className="text-lg font-semibold text-slate-800 mb-4">Area Information</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <label htmlFor={getFieldId('landArea')} className="block text-sm font-medium text-slate-700 mb-2">
+              <label htmlFor={getFieldId('plotSize')} className="block text-sm font-medium text-slate-700 mb-2">
                 Land Area (sqm) *
               </label>
               <input
-                id={getFieldId('landArea')}
+                id={getFieldId('plotSize')}
                 type="text"
                 inputMode="decimal"
-                value={formData.landArea}
-                onChange={(e) => handleInputChange('landArea', e.target.value)}
+                value={formData.plotSize}
+                onChange={(e) => handleInputChange('plotSize', e.target.value)}
                 placeholder="e.g. 500"
-                aria-invalid={Boolean(errors.landArea)}
-                aria-describedby={errors.landArea ? getErrorId('landArea') : undefined}
+                aria-invalid={Boolean(errors.plotSize)}
+                aria-describedby={errors.plotSize ? getErrorId('plotSize') : undefined}
                 className={`w-full px-4 py-3 form-input-white-teal ${
-                  errors.landArea ? 'error' : ''
+                  errors.plotSize ? 'error' : ''
                 }`}
               />
-              {errors.landArea && (
-                <p id={getErrorId('landArea')} role="alert" aria-live="assertive" className="text-red-400 text-sm mt-1">
-                  {errors.landArea}
+              {errors.plotSize && (
+                <p id={getErrorId('plotSize')} role="alert" aria-live="assertive" className="text-red-400 text-sm mt-1">
+                  {errors.plotSize}
                 </p>
               )}
             </div>
 
             <div>
-              <label htmlFor={getFieldId('villaArea')} className="block text-sm font-medium text-slate-700 mb-2">
+              <label htmlFor={getFieldId('propertySize')} className="block text-sm font-medium text-slate-700 mb-2">
                 Property Size (sqm) *
               </label>
               <input
-                id={getFieldId('villaArea')}
+                id={getFieldId('propertySize')}
                 type="text"
                 inputMode="decimal"
-                value={formData.villaArea}
-                onChange={(e) => handleInputChange('villaArea', e.target.value)}
+                value={formData.propertySize}
+                onChange={(e) => handleInputChange('propertySize', e.target.value)}
                 placeholder="e.g. 300"
-                aria-invalid={Boolean(errors.villaArea)}
-                aria-describedby={errors.villaArea ? getErrorId('villaArea') : undefined}
+                aria-invalid={Boolean(errors.propertySize)}
+                aria-describedby={errors.propertySize ? getErrorId('propertySize') : undefined}
                 className={`w-full px-4 py-3 form-input-white-teal ${
-                  errors.villaArea ? 'error' : ''
+                  errors.propertySize ? 'error' : ''
                 }`}
               />
-              {errors.villaArea && (
-                <p id={getErrorId('villaArea')} role="alert" aria-live="assertive" className="text-red-400 text-sm mt-1">
-                  {errors.villaArea}
+              {errors.propertySize && (
+                <p id={getErrorId('propertySize')} role="alert" aria-live="assertive" className="text-red-400 text-sm mt-1">
+                  {errors.propertySize}
                 </p>
               )}
             </div>

@@ -627,7 +627,7 @@ class MicrosoftGraphService {
   /**
    * Get service status
    */
-  getStatus(): { initialized: boolean; hasClient: boolean } {
+  getStatus(): { initialized: boolean; hasClient: boolean; enabled: boolean } {
     return {
       initialized: this.isInitialized,
       hasClient: this.client !== null,
